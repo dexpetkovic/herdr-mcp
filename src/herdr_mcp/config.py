@@ -66,13 +66,10 @@ def _parse_bind_host(value: str) -> str:
 
 def _parse_port(value: str) -> int:
     digits = value.lstrip("0")
-    if (
-        not re.fullmatch(r"[0-9]+", value)
-        or len(digits) > 5
-        or not 1 <= int(digits or "0") <= 65535
-    ):
+    port = int(digits) if re.fullmatch(r"[0-9]+", value) and 0 < len(digits) <= 5 else 0
+    if not 1 <= port <= 65535:
         raise ConfigError("HERDR_MCP_PORT must be an integer from 1 to 65535.")
-    return int(digits)
+    return port
 
 
 def _resolve_herdr_binary(value: str) -> str:

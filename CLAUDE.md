@@ -15,5 +15,5 @@ All three checks must pass before a pull request opens.
 
 - `src/herdr_mcp/herdr.py` is the only module that starts a subprocess or reads herdr's JSON.
 - Tests never run the real herdr binary. They pass a fake runner from `tests/conftest.py` to `Herdr`.
-- Test data in `tests/conftest.py` keeps herdr 0.9.5's wire shape and uses synthetic values only.
+- Synthetic fixtures in `tests/conftest.py` preserve the fields the server reads from herdr 0.9.5.
 - The global quality gates in `~/.claude/skills/implement-ticket/quality-gates.md` apply.

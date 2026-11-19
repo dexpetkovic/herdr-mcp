@@ -159,6 +159,6 @@ def _agent_records(snapshot: _Snapshot) -> list[AgentRecord]:
 def _stderr_error_code(stderr: str) -> str:
     try:
         code = json.loads(stderr)["error"]["code"]
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError):
         return "unreadable_error"
     return code if isinstance(code, str) else "unreadable_error"
