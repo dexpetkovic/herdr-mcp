@@ -34,6 +34,17 @@ def test_null_worktree_leaves_checkout_kind_empty(snapshot_json, fake_runner):
     assert records[0].is_main_checkout is None
 
 
+def test_malformed_tab_without_agents_is_unexpected_output(snapshot_json, fake_runner):
+    tabs = snapshot_json["result"]["snapshot"]["tabs"]
+    tabs.append({"tab_id": "w2:t2", "workspace_id": "w2", "number": "2", "label": "2"})
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
+
+    with pytest.raises(HerdrError) as raised:
+        herdr.snapshot()
+
+    assert (raised.value.code, raised.value.field) == ("unexpected_output", "number")
+
+
 def test_herdr_error_code_comes_from_stderr_json(fake_runner):
     herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: failed_with("server_not_running")}))
 

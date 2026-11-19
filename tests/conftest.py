@@ -32,6 +32,11 @@ INVALID_SETTINGS = [
     ("HERDR_MCP_HOST", "localhost:80"),
     ("HERDR_MCP_PORT", "0"),
 ]
+UNAUTHORIZED_REQUESTS = {
+    "missing header": ("/mcp", {}),
+    "wrong token": ("/mcp", {"Authorization": f"Bearer {'x' * 32}"}),
+    "token query": (f"/mcp?token={TOKEN}", {}),
+}
 EXPECTED_SUMMARIES = [
     {"target": "alpha", "kind": "claude", "status": "working", "workspace": "api"},
     {"target": "w1:p2", "kind": "codex", "status": "idle", "workspace": "api"},

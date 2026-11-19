@@ -83,6 +83,7 @@ def _log_herdr_error(error: HerdrError) -> None:
             "herdr_command": error.command,
             "herdr_exit_code": error.exit_code,
             "herdr_field": error.field,
+            "herdr_cause": repr(error.__cause__) if error.__cause__ is not None else None,
         },
     )
 

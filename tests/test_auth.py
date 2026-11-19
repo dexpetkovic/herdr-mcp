@@ -1,15 +1,11 @@
 import pytest
-from conftest import TOKEN
+from conftest import TOKEN, UNAUTHORIZED_REQUESTS
 
 
 @pytest.mark.parametrize(
     ("path", "headers"),
-    [
-        ("/mcp", {}),
-        ("/mcp", {"Authorization": f"Bearer {'x' * 32}"}),
-        (f"/mcp?token={TOKEN}", {}),
-    ],
-    ids=["missing header", "wrong token", "token query"],
+    UNAUTHORIZED_REQUESTS.values(),
+    ids=UNAUTHORIZED_REQUESTS.keys(),
 )
 def test_request_without_the_bearer_token_is_rejected(auth_client, path, headers):
     response = auth_client.get(path, headers=headers)

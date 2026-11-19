@@ -23,7 +23,7 @@ class Runner(Protocol):
 
 
 class HerdrError(Exception):
-    """A herdr call failed. `field` names the snapshot field that failed validation."""
+    """A herdr call failed. `field` names the malformed snapshot field when there is one."""
 
     def __init__(
         self, code: str, command: str, exit_code: int | None, field: str | None = None
@@ -38,7 +38,9 @@ class HerdrError(Exception):
 def subprocess_runner(args: list[str], timeout: float) -> RunResult:
     command = " ".join(args[1:])
     try:
-        completed = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        completed = subprocess.run(
+            args, capture_output=True, text=True, errors="replace", timeout=timeout
+        )
     except subprocess.TimeoutExpired:
         raise HerdrError("timeout", command, None) from None
     except OSError as error:
@@ -89,53 +91,56 @@ class _MalformedOutput(Exception):
         self.field = field
 
 
+@dataclass(frozen=True)
+class _Workspace:
+    label: str | None
+    is_main_checkout: bool | None
+
+
 def _parse_snapshot(payload: Any) -> list[AgentRecord]:
     result = _as_object(_as_object(payload, "payload").get("result"), "result")
     snapshot = _as_object(result.get("snapshot"), "result.snapshot")
     agents = [_as_object(item, "agents[]") for item in _list_field(snapshot, "agents")]
-    workspaces = {
-        _required_str(entry, "workspace_id"): entry
-        for entry in (
-            _as_object(item, "workspaces[]") for item in _list_field(snapshot, "workspaces")
-        )
-    }
-    tabs = {
-        _required_str(entry, "tab_id"): entry
-        for entry in (_as_object(item, "tabs[]") for item in _list_field(snapshot, "tabs"))
-    }
+    workspaces = dict(
+        _parse_workspace(_as_object(item, "workspaces[]"))
+        for item in _list_field(snapshot, "workspaces")
+    )
+    tab_numbers = dict(
+        _parse_tab(_as_object(item, "tabs[]")) for item in _list_field(snapshot, "tabs")
+    )
     tab_ids = [_optional_str(agent, "tab_id") for agent in agents]
     agents_per_tab = Counter(tab_id for tab_id in tab_ids if tab_id is not None)
-    return [
-        _build_agent_record(
-            agent,
-            workspaces.get(_optional_str(agent, "workspace_id") or ""),
-            tabs.get(tab_id or ""),
-            agents_per_tab[tab_id] if tab_id is not None else 1,
+    records = []
+    for agent, tab_id in zip(agents, tab_ids, strict=True):
+        workspace = workspaces.get(_optional_str(agent, "workspace_id") or "")
+        records.append(
+            AgentRecord(
+                name=_optional_str(agent, "name"),
+                pane_id=_required_str(agent, "pane_id"),
+                kind=_required_str(agent, "agent"),
+                status=_required_str(agent, "agent_status"),
+                workspace_label=workspace.label if workspace is not None else None,
+                is_main_checkout=workspace.is_main_checkout if workspace is not None else None,
+                tab_number=tab_numbers.get(tab_id or ""),
+                agents_in_tab=agents_per_tab[tab_id] if tab_id is not None else 1,
+            )
         )
-        for agent, tab_id in zip(agents, tab_ids, strict=True)
-    ]
+    return records
 
 
-def _build_agent_record(
-    agent: dict[str, Any],
-    workspace: dict[str, Any] | None,
-    tab: dict[str, Any] | None,
-    agents_in_tab: int,
-) -> AgentRecord:
-    return AgentRecord(
-        name=_optional_str(agent, "name"),
-        pane_id=_required_str(agent, "pane_id"),
-        kind=_required_str(agent, "agent"),
-        status=_required_str(agent, "agent_status"),
-        workspace_label=_optional_str(workspace, "label") if workspace is not None else None,
-        is_main_checkout=_is_main_checkout(workspace),
-        tab_number=_optional_int(tab, "number") if tab is not None else None,
-        agents_in_tab=agents_in_tab,
+def _parse_workspace(entry: dict[str, Any]) -> tuple[str, _Workspace]:
+    workspace = _Workspace(
+        label=_optional_str(entry, "label"),
+        is_main_checkout=_is_main_checkout(entry.get("worktree")),
     )
+    return _required_str(entry, "workspace_id"), workspace
 
 
-def _is_main_checkout(workspace: dict[str, Any] | None) -> bool | None:
-    worktree = workspace.get("worktree") if workspace is not None else None
+def _parse_tab(entry: dict[str, Any]) -> tuple[str, int | None]:
+    return _required_str(entry, "tab_id"), _optional_int(entry, "number")
+
+
+def _is_main_checkout(worktree: Any) -> bool | None:
     if worktree is None:
         return None
     is_linked = _as_object(worktree, "worktree").get("is_linked_worktree")
