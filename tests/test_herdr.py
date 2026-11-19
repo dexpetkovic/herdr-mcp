@@ -1,9 +1,7 @@
-import json
-
 import pytest
-from conftest import SNAPSHOT_ARGS, succeeded
+from conftest import SNAPSHOT_ARGS, failed_with, succeeded
 
-from herdr_mcp.herdr import AgentRecord, Herdr, HerdrError, RunResult
+from herdr_mcp.herdr import AgentRecord, Herdr, HerdrError, RunResult, subprocess_runner
 
 
 def test_snapshot_joins_agents_to_workspaces_and_tabs(snapshot_herdr):
@@ -27,9 +25,17 @@ def test_null_agents_list_is_unexpected_output(snapshot_json, fake_runner):
     assert (raised.value.code, raised.value.field) == ("unexpected_output", "agents")
 
 
+def test_null_worktree_leaves_checkout_kind_empty(snapshot_json, fake_runner):
+    snapshot_json["result"]["snapshot"]["workspaces"][0]["worktree"] = None
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
+
+    records = herdr.snapshot()
+
+    assert records[0].is_main_checkout is None
+
+
 def test_herdr_error_code_comes_from_stderr_json(fake_runner):
-    stderr = json.dumps({"error": {"code": "server_not_running", "message": "not running"}})
-    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: RunResult(1, "", stderr)}))
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: failed_with("server_not_running")}))
 
     with pytest.raises(HerdrError) as raised:
         herdr.snapshot()
@@ -65,7 +71,7 @@ def test_stdout_without_snapshot_is_unexpected_output(fake_runner):
     with pytest.raises(HerdrError) as raised:
         herdr.snapshot()
 
-    assert raised.value.code == "unexpected_output"
+    assert (raised.value.code, raised.value.field) == ("unexpected_output", "result.snapshot")
 
 
 def test_numeric_tab_id_is_unexpected_output(snapshot_json, fake_runner):
@@ -76,3 +82,10 @@ def test_numeric_tab_id_is_unexpected_output(snapshot_json, fake_runner):
         herdr.snapshot()
 
     assert (raised.value.code, raised.value.field) == ("unexpected_output", "tab_id")
+
+
+def test_binary_that_cannot_start_is_launch_failed(tmp_path):
+    with pytest.raises(HerdrError) as raised:
+        subprocess_runner([str(tmp_path / "missing-herdr"), "api", "snapshot"], timeout=1.0)
+
+    assert (raised.value.code, raised.value.command) == ("launch_failed", "api snapshot")

@@ -23,7 +23,7 @@ class Runner(Protocol):
 
 
 class HerdrError(Exception):
-    """A herdr call failed. `code` is herdr's error code or one this module assigns."""
+    """A herdr call failed. `field` names the snapshot field that failed validation."""
 
     def __init__(
         self, code: str, command: str, exit_code: int | None, field: str | None = None
@@ -36,10 +36,13 @@ class HerdrError(Exception):
 
 
 def subprocess_runner(args: list[str], timeout: float) -> RunResult:
+    command = " ".join(args[1:])
     try:
         completed = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise HerdrError("timeout", " ".join(args[1:]), None) from None
+        raise HerdrError("timeout", command, None) from None
+    except OSError as error:
+        raise HerdrError("launch_failed", command, None) from error
     return RunResult(completed.returncode, completed.stdout, completed.stderr)
 
 
@@ -65,7 +68,7 @@ class Herdr:
         try:
             return _parse_snapshot(payload)
         except _MalformedOutput as error:
-            raise HerdrError("unexpected_output", " ".join(SNAPSHOT_ARGS), 0, str(error)) from None
+            raise HerdrError("unexpected_output", " ".join(SNAPSHOT_ARGS), 0, error.field) from None
 
     def _query(self, args: list[str]) -> Any:
         command = " ".join(args)
@@ -81,36 +84,44 @@ class Herdr:
 
 
 class _MalformedOutput(Exception):
-    """herdr's JSON lacks a field or has one of the wrong type. The message is the field name."""
+    def __init__(self, field: str) -> None:
+        super().__init__(field)
+        self.field = field
 
 
 def _parse_snapshot(payload: Any) -> list[AgentRecord]:
-    snapshot = _as_object(_as_object(_as_object(payload).get("result")).get("snapshot"))
-    agents = [_as_object(item) for item in _list_field(snapshot, "agents")]
+    result = _as_object(_as_object(payload, "payload").get("result"), "result")
+    snapshot = _as_object(result.get("snapshot"), "result.snapshot")
+    agents = [_as_object(item, "agents[]") for item in _list_field(snapshot, "agents")]
     workspaces = {
         _required_str(entry, "workspace_id"): entry
-        for entry in map(_as_object, _list_field(snapshot, "workspaces"))
+        for entry in (
+            _as_object(item, "workspaces[]") for item in _list_field(snapshot, "workspaces")
+        )
     }
     tabs = {
         _required_str(entry, "tab_id"): entry
-        for entry in map(_as_object, _list_field(snapshot, "tabs"))
+        for entry in (_as_object(item, "tabs[]") for item in _list_field(snapshot, "tabs"))
     }
     tab_ids = [_optional_str(agent, "tab_id") for agent in agents]
     agents_per_tab = Counter(tab_id for tab_id in tab_ids if tab_id is not None)
     return [
-        _record(agent, workspaces, tabs, agents_per_tab[tab_id] if tab_id is not None else 1)
+        _build_agent_record(
+            agent,
+            workspaces.get(_optional_str(agent, "workspace_id") or ""),
+            tabs.get(tab_id or ""),
+            agents_per_tab[tab_id] if tab_id is not None else 1,
+        )
         for agent, tab_id in zip(agents, tab_ids, strict=True)
     ]
 
 
-def _record(
+def _build_agent_record(
     agent: dict[str, Any],
-    workspaces: dict[str, dict[str, Any]],
-    tabs: dict[str, dict[str, Any]],
+    workspace: dict[str, Any] | None,
+    tab: dict[str, Any] | None,
     agents_in_tab: int,
 ) -> AgentRecord:
-    workspace = workspaces.get(_optional_str(agent, "workspace_id") or "")
-    tab = tabs.get(_optional_str(agent, "tab_id") or "")
     return AgentRecord(
         name=_optional_str(agent, "name"),
         pane_id=_required_str(agent, "pane_id"),
@@ -124,9 +135,10 @@ def _record(
 
 
 def _is_main_checkout(workspace: dict[str, Any] | None) -> bool | None:
-    if workspace is None or "worktree" not in workspace:
+    worktree = workspace.get("worktree") if workspace is not None else None
+    if worktree is None:
         return None
-    is_linked = _as_object(workspace["worktree"]).get("is_linked_worktree")
+    is_linked = _as_object(worktree, "worktree").get("is_linked_worktree")
     if not isinstance(is_linked, bool):
         raise _MalformedOutput("is_linked_worktree")
     return not is_linked
@@ -147,9 +159,9 @@ def _list_field(container: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
-def _as_object(value: Any) -> dict[str, Any]:
+def _as_object(value: Any, field: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise _MalformedOutput("object")
+        raise _MalformedOutput(field)
     return value
 
 

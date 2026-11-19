@@ -2,12 +2,12 @@
 
 import json
 import logging
+from typing import Annotated
 
 import uvicorn
 from mcp.server import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -48,13 +48,13 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
     server = MCPServer(name="herdr")
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
-    def list_agents() -> AgentList:
-        """List the herdr agents with their name, kind, status and workspace."""
+    def list_agents() -> Annotated[CallToolResult, AgentList]:
+        """List herdr agents with their target, kind, status and workspace."""
         try:
             records = herdr.snapshot()
         except HerdrError as error:
             _log_herdr_error(error)
-            raise ToolError(_spoken_error(error)) from None
+            return _spoken_error(error)
         return AgentList(agents=summarise_agents(records))
 
     app: ASGIApp = server.streamable_http_app(
@@ -87,10 +87,12 @@ def _log_herdr_error(error: HerdrError) -> None:
     )
 
 
-def _spoken_error(error: HerdrError) -> str:
+def _spoken_error(error: HerdrError) -> CallToolResult:
     if error.code == "server_not_running":
-        return "herdr is not running on the server."
-    return "herdr could not answer the request."
+        sentence = "herdr is not running on the server."
+    else:
+        sentence = "herdr could not answer the request."
+    return CallToolResult(content=[TextContent(type="text", text=sentence)], is_error=True)
 
 
 class HeaderNameLogger:
@@ -107,8 +109,6 @@ class HeaderNameLogger:
 
 
 class FieldsFormatter(logging.Formatter):
-    """Appends a record's structured `extra` fields to the message as JSON."""
-
     STANDARD_ATTRIBUTES = frozenset(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 
     def format(self, record: logging.LogRecord) -> str:

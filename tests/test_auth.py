@@ -1,17 +1,5 @@
 import pytest
 from conftest import TOKEN
-from starlette.applications import Starlette
-from starlette.responses import PlainTextResponse
-from starlette.routing import Route
-from starlette.testclient import TestClient
-
-from herdr_mcp.auth import BearerTokenMiddleware
-
-
-@pytest.fixture
-def client() -> TestClient:
-    stub = Starlette(routes=[Route("/mcp", lambda request: PlainTextResponse("ok"))])
-    return TestClient(BearerTokenMiddleware(stub, TOKEN))
 
 
 @pytest.mark.parametrize(
@@ -23,13 +11,13 @@ def client() -> TestClient:
     ],
     ids=["missing header", "wrong token", "token query"],
 )
-def test_request_without_the_bearer_token_is_rejected(client, path, headers):
-    response = client.get(path, headers=headers)
+def test_request_without_the_bearer_token_is_rejected(auth_client, path, headers):
+    response = auth_client.get(path, headers=headers)
 
     assert (response.status_code, response.content) == (401, b"")
 
 
-def test_request_with_the_bearer_token_reaches_the_app(client):
-    response = client.get("/mcp", headers={"Authorization": f"Bearer {TOKEN}"})
+def test_request_with_the_bearer_token_reaches_the_app(auth_client):
+    response = auth_client.get("/mcp", headers={"Authorization": f"Bearer {TOKEN}"})
 
     assert (response.status_code, response.text) == (200, "ok")
