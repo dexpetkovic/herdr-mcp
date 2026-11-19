@@ -1,6 +1,5 @@
 """The herdr CLI client. It is the only module that starts a subprocess or reads herdr's JSON."""
 
-import json
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
@@ -156,9 +155,16 @@ def _agent_records(snapshot: _Snapshot) -> list[AgentRecord]:
     return records
 
 
+class _ErrorDetail(_WireModel):
+    code: str
+
+
+class _ErrorResponse(_WireModel):
+    error: _ErrorDetail
+
+
 def _stderr_error_code(stderr: str) -> str:
     try:
-        code = json.loads(stderr)["error"]["code"]
-    except (ValueError, KeyError, TypeError):
+        return _ErrorResponse.model_validate_json(stderr).error.code
+    except ValidationError:
         return "unreadable_error"
-    return code if isinstance(code, str) else "unreadable_error"

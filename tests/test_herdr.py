@@ -1,5 +1,5 @@
 import pytest
-from conftest import EXPECTED_RECORDS, SNAPSHOT_ARGS, failed_with, succeeded
+from conftest import EXPECTED_RECORDS, SNAPSHOT_ARGS, UNREADABLE_STDERR, failed_with, succeeded
 
 from herdr_mcp.herdr import Herdr, HerdrError, RunResult, subprocess_runner
 
@@ -72,8 +72,9 @@ def test_herdr_error_code_comes_from_stderr_json(fake_runner):
     )
 
 
-def test_stderr_that_is_not_json_is_unreadable_error(fake_runner):
-    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: RunResult(1, "", "1" * 5000)}))
+@pytest.mark.parametrize("stderr", UNREADABLE_STDERR.values(), ids=UNREADABLE_STDERR.keys())
+def test_stderr_without_herdr_error_json_is_unreadable_error(fake_runner, stderr):
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: RunResult(1, "", stderr)}))
 
     with pytest.raises(HerdrError) as raised:
         herdr.snapshot()

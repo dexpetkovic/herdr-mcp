@@ -50,6 +50,11 @@ EXPECTED_SUMMARIES = [
     {"target": "beta", "kind": "claude", "status": "blocked", "workspace": "web"},
     {"target": "gamma", "kind": "codex", "status": "done", "workspace": "unknown"},
 ]
+UNREADABLE_STDERR = {
+    "plain text": "panic",
+    "oversized integer": "1" * 5000,
+    "deep nesting": "[" * 10000 + "]" * 10000,
+}
 INITIALIZE_REQUEST = {
     "jsonrpc": "2.0",
     "id": 1,
