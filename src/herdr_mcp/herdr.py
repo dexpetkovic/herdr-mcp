@@ -4,7 +4,9 @@ import json
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 TIMEOUT_SECONDS = 10.0
 INVALID_SYNTAX_EXIT_CODE = 2
@@ -23,7 +25,7 @@ class Runner(Protocol):
 
 
 class HerdrError(Exception):
-    """A herdr call failed. `field` names the malformed snapshot field when there is one."""
+    """A herdr call failed. `field` is the dotted path of a malformed snapshot field."""
 
     def __init__(
         self, code: str, command: str, exit_code: int | None, field: str | None = None
@@ -52,7 +54,7 @@ def subprocess_runner(args: list[str], timeout: float) -> RunResult:
 class AgentRecord:
     name: str | None
     pane_id: str
-    kind: str
+    kind: str | None
     status: str
     workspace_label: str | None
     is_main_checkout: bool | None
@@ -66,87 +68,92 @@ class Herdr:
         self._run = run
 
     def snapshot(self) -> list[AgentRecord]:
-        payload = self._query(SNAPSHOT_ARGS)
+        command = " ".join(SNAPSHOT_ARGS)
+        stdout = self._query(SNAPSHOT_ARGS)
         try:
-            return _parse_snapshot(payload)
-        except _MalformedOutput as error:
-            raise HerdrError("unexpected_output", " ".join(SNAPSHOT_ARGS), 0, error.field) from None
+            snapshot = _SnapshotResponse.model_validate_json(stdout).result.snapshot
+        except ValidationError as error:
+            location = error.errors()[0]["loc"]
+            field = ".".join(str(part) for part in location) or None
+            raise HerdrError("unexpected_output", command, 0, field) from None
+        return _agent_records(snapshot)
 
-    def _query(self, args: list[str]) -> Any:
+    def _query(self, args: list[str]) -> str:
         command = " ".join(args)
         result = self._run([self._binary, *args], timeout=TIMEOUT_SECONDS)
         if result.exit_code == INVALID_SYNTAX_EXIT_CODE:
             raise HerdrError("invalid_syntax", command, result.exit_code)
         if result.exit_code != 0:
             raise HerdrError(_stderr_error_code(result.stderr), command, result.exit_code)
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError:
-            raise HerdrError("unexpected_output", command, 0) from None
+        return result.stdout
 
 
-class _MalformedOutput(Exception):
-    def __init__(self, field: str) -> None:
-        super().__init__(field)
-        self.field = field
+class _WireModel(BaseModel):
+    """A row of herdr 0.9.5's bundled schema, `herdr api schema --json`, holding the fields read."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
 
 
-@dataclass(frozen=True)
-class _Workspace:
-    label: str | None
-    is_main_checkout: bool | None
+class _WorktreeRow(_WireModel):
+    is_linked_worktree: bool
 
 
-def _parse_snapshot(payload: Any) -> list[AgentRecord]:
-    result = _as_object(_as_object(payload, "payload").get("result"), "result")
-    snapshot = _as_object(result.get("snapshot"), "result.snapshot")
-    agents = [_as_object(item, "agents[]") for item in _list_field(snapshot, "agents")]
-    workspaces = dict(
-        _parse_workspace(_as_object(item, "workspaces[]"))
-        for item in _list_field(snapshot, "workspaces")
-    )
-    tab_numbers = dict(
-        _parse_tab(_as_object(item, "tabs[]")) for item in _list_field(snapshot, "tabs")
-    )
-    tab_ids = [_optional_str(agent, "tab_id") for agent in agents]
-    agents_per_tab = Counter(tab_id for tab_id in tab_ids if tab_id is not None)
+class _WorkspaceRow(_WireModel):
+    workspace_id: str
+    label: str
+    worktree: _WorktreeRow | None = None
+
+
+class _TabRow(_WireModel):
+    tab_id: str
+    workspace_id: str
+    number: int
+
+
+class _AgentRow(_WireModel):
+    pane_id: str
+    workspace_id: str
+    tab_id: str
+    agent_status: str
+    agent: str | None = None
+    name: str | None = None
+
+
+class _Snapshot(_WireModel):
+    agents: list[_AgentRow]
+    workspaces: list[_WorkspaceRow]
+    tabs: list[_TabRow]
+
+
+class _SnapshotResult(_WireModel):
+    snapshot: _Snapshot
+
+
+class _SnapshotResponse(_WireModel):
+    result: _SnapshotResult
+
+
+def _agent_records(snapshot: _Snapshot) -> list[AgentRecord]:
+    workspaces = {workspace.workspace_id: workspace for workspace in snapshot.workspaces}
+    tab_numbers = {tab.tab_id: tab.number for tab in snapshot.tabs}
+    agents_per_tab = Counter(agent.tab_id for agent in snapshot.agents)
     records = []
-    for agent, tab_id in zip(agents, tab_ids, strict=True):
-        workspace = workspaces.get(_optional_str(agent, "workspace_id") or "")
+    for agent in snapshot.agents:
+        workspace = workspaces.get(agent.workspace_id)
+        worktree = workspace.worktree if workspace is not None else None
         records.append(
             AgentRecord(
-                name=_optional_str(agent, "name"),
-                pane_id=_required_str(agent, "pane_id"),
-                kind=_required_str(agent, "agent"),
-                status=_required_str(agent, "agent_status"),
+                name=agent.name,
+                pane_id=agent.pane_id,
+                kind=agent.agent,
+                status=agent.agent_status,
                 workspace_label=workspace.label if workspace is not None else None,
-                is_main_checkout=workspace.is_main_checkout if workspace is not None else None,
-                tab_number=tab_numbers.get(tab_id or ""),
-                agents_in_tab=agents_per_tab[tab_id] if tab_id is not None else 1,
+                is_main_checkout=not worktree.is_linked_worktree if worktree is not None else None,
+                tab_number=tab_numbers.get(agent.tab_id),
+                agents_in_tab=agents_per_tab[agent.tab_id],
             )
         )
     return records
-
-
-def _parse_workspace(entry: dict[str, Any]) -> tuple[str, _Workspace]:
-    workspace = _Workspace(
-        label=_optional_str(entry, "label"),
-        is_main_checkout=_is_main_checkout(entry.get("worktree")),
-    )
-    return _required_str(entry, "workspace_id"), workspace
-
-
-def _parse_tab(entry: dict[str, Any]) -> tuple[str, int | None]:
-    return _required_str(entry, "tab_id"), _optional_int(entry, "number")
-
-
-def _is_main_checkout(worktree: Any) -> bool | None:
-    if worktree is None:
-        return None
-    is_linked = _as_object(worktree, "worktree").get("is_linked_worktree")
-    if not isinstance(is_linked, bool):
-        raise _MalformedOutput("is_linked_worktree")
-    return not is_linked
 
 
 def _stderr_error_code(stderr: str) -> str:
@@ -155,36 +162,3 @@ def _stderr_error_code(stderr: str) -> str:
     except (json.JSONDecodeError, KeyError, TypeError):
         return "unreadable_error"
     return code if isinstance(code, str) else "unreadable_error"
-
-
-def _list_field(container: dict[str, Any], key: str) -> list[Any]:
-    value = container.get(key)
-    if not isinstance(value, list):
-        raise _MalformedOutput(key)
-    return value
-
-
-def _as_object(value: Any, field: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise _MalformedOutput(field)
-    return value
-
-
-def _required_str(entry: dict[str, Any], key: str) -> str:
-    value = entry.get(key)
-    if not isinstance(value, str):
-        raise _MalformedOutput(key)
-    return value
-
-
-def _optional_str(entry: dict[str, Any], key: str) -> str | None:
-    return _required_str(entry, key) if key in entry else None
-
-
-def _optional_int(entry: dict[str, Any], key: str) -> int | None:
-    if key not in entry:
-        return None
-    value = entry[key]
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise _MalformedOutput(key)
-    return value

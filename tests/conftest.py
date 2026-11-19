@@ -11,7 +11,7 @@ from starlette.testclient import TestClient
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import Settings
-from herdr_mcp.herdr import Herdr, Runner, RunResult
+from herdr_mcp.herdr import AgentRecord, Herdr, Runner, RunResult
 from herdr_mcp.server import build_app
 
 SNAPSHOT_ARGS = ("herdr", "api", "snapshot")
@@ -37,6 +37,12 @@ UNAUTHORIZED_REQUESTS = {
     "wrong token": ("/mcp", {"Authorization": f"Bearer {'x' * 32}"}),
     "token query": (f"/mcp?token={TOKEN}", {}),
 }
+EXPECTED_RECORDS = [
+    AgentRecord("alpha", "w1:p1", "claude", "working", "api", True, 1, 2),
+    AgentRecord(None, "w1:p2", "codex", "idle", "api", True, 1, 2),
+    AgentRecord("beta", "w2:p1", "claude", "blocked", "web", False, 1, 1),
+    AgentRecord("gamma", "w3:p1", "codex", "done", None, None, None, 1),
+]
 EXPECTED_SUMMARIES = [
     {"target": "alpha", "kind": "claude", "status": "working", "workspace": "api"},
     {"target": "w1:p2", "kind": "codex", "status": "idle", "workspace": "api"},

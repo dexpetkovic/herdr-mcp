@@ -36,9 +36,9 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
     return [
         AgentSummary(
             target=record.name or record.pane_id,
-            kind=record.kind,
+            kind=record.kind if record.kind is not None else "unknown",
             status=record.status,
-            workspace=record.workspace_label or "unknown",
+            workspace=record.workspace_label if record.workspace_label is not None else "unknown",
         )
         for record in records
     ]

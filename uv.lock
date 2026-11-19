@@ -238,6 +238,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
+    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
@@ -250,6 +251,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = "==2.3.0" },
+    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
