@@ -1,0 +1,27 @@
+[project]
+name = "herdr-mcp"
+version = "0.1.0"
+description = "An MCP server that reports and steers herdr agents."
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["mcp==2.3.0", "uvicorn"]
+
+[project.scripts]
+herdr-mcp = "herdr_mcp.server:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
