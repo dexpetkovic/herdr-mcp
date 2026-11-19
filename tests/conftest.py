@@ -31,6 +31,7 @@ INVALID_SETTINGS = [
     ("HERDR_MCP_PUBLIC_HOST", "mcp.example.com:443"),
     ("HERDR_MCP_HOST", "localhost:80"),
     ("HERDR_MCP_PORT", "0"),
+    ("HERDR_MCP_PORT", "0" * 5000 + "8000" + "0"),
 ]
 UNAUTHORIZED_REQUESTS = {
     "missing header": ("/mcp", {}),
@@ -73,7 +74,7 @@ def snapshot_json() -> dict[str, Any]:
     return {
         "id": "1",
         "result": {
-            "type": "snapshot",
+            "type": "session_snapshot",
             "snapshot": {
                 "agents": [
                     _agent("w1:p1", "w1", "w1:t1", "claude", "working", name="alpha"),

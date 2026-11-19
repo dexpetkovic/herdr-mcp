@@ -1,6 +1,13 @@
-from conftest import EXPECTED_SUMMARIES, LIST_AGENTS_CALL, SNAPSHOT_ARGS, failed_with, mcp_session
+from conftest import (
+    EXPECTED_SUMMARIES,
+    LIST_AGENTS_CALL,
+    SNAPSHOT_ARGS,
+    failed_with,
+    mcp_session,
+    succeeded,
+)
 
-from herdr_mcp.herdr import AgentRecord, Herdr
+from herdr_mcp.herdr import Herdr
 from herdr_mcp.server import AgentSummary, summarise_agents
 
 
@@ -39,7 +46,8 @@ def test_summarise_agents_falls_back_to_pane_id_and_unknown_workspace(snapshot_h
     assert summaries == [AgentSummary(**summary) for summary in EXPECTED_SUMMARIES]
 
 
-def test_summary_without_kind_says_unknown():
-    record = AgentRecord(None, "w1:p1", None, "idle", "api", None, None, 1)
+def test_summary_without_kind_says_unknown(snapshot_json, fake_runner):
+    snapshot_json["result"]["snapshot"]["agents"][0]["agent"] = None
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
 
-    assert summarise_agents([record])[0].kind == "unknown"
+    assert summarise_agents(herdr.snapshot())[0].kind == "unknown"

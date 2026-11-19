@@ -23,6 +23,19 @@ def test_null_agents_list_is_unexpected_output(snapshot_json, fake_runner):
     )
 
 
+def test_status_outside_the_schema_enum_is_unexpected_output(snapshot_json, fake_runner):
+    snapshot_json["result"]["snapshot"]["agents"][1]["agent_status"] = "paused"
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
+
+    with pytest.raises(HerdrError) as raised:
+        herdr.snapshot()
+
+    assert (raised.value.code, raised.value.field) == (
+        "unexpected_output",
+        "result.snapshot.agents.1.agent_status",
+    )
+
+
 def test_null_worktree_leaves_checkout_kind_empty(snapshot_json, fake_runner):
     snapshot_json["result"]["snapshot"]["workspaces"][0]["worktree"] = None
     herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))

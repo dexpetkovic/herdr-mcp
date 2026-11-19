@@ -4,9 +4,9 @@ import json
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, ValidationError
 
 TIMEOUT_SECONDS = 10.0
 INVALID_SYNTAX_EXIT_CODE = 2
@@ -25,7 +25,7 @@ class Runner(Protocol):
 
 
 class HerdrError(Exception):
-    """A herdr call failed. `field` is the dotted path of a malformed snapshot field."""
+    """A herdr call failed. `field` is the dotted path of malformed snapshot data, when known."""
 
     def __init__(
         self, code: str, command: str, exit_code: int | None, field: str | None = None
@@ -89,7 +89,7 @@ class Herdr:
 
 
 class _WireModel(BaseModel):
-    """A row of herdr 0.9.5's bundled schema, `herdr api schema --json`, holding the fields read."""
+    """Validates the fields read from herdr 0.9.5's bundled schema, `herdr api schema --json`."""
 
     model_config = ConfigDict(strict=True, frozen=True)
 
@@ -107,14 +107,14 @@ class _WorkspaceRow(_WireModel):
 class _TabRow(_WireModel):
     tab_id: str
     workspace_id: str
-    number: int
+    number: NonNegativeInt
 
 
 class _AgentRow(_WireModel):
     pane_id: str
     workspace_id: str
     tab_id: str
-    agent_status: str
+    agent_status: Literal["idle", "working", "blocked", "done", "unknown"]
     agent: str | None = None
     name: str | None = None
 
