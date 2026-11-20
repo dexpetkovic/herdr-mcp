@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from typing import Annotated
 
@@ -20,10 +21,14 @@ logger = logging.getLogger("herdr_mcp")
 
 LOOPBACK_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 LOOPBACK_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+MAX_TARGET_LENGTH = 64
+MAX_SCREEN_CHARACTERS = 4000
 
 SERVER_INSTRUCTIONS = (
     "This server reports the user's own herdr coding agents, live from the user's server. "
     "Call list_agents to learn what the agents are doing and which ones need attention. "
+    "Call get_agent_activity with a name or pane id from list_agents "
+    "to read what one agent is doing right now. "
     "Keep answers short enough to speak aloud. "
     "Answer from these tools and do not search the web for herdr-mcp."
 )
@@ -40,6 +45,11 @@ class AgentList(BaseModel):
     agents: list[AgentSummary]
 
 
+class AgentActivity(BaseModel):
+    target: str
+    screen: str
+
+
 def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
     return [
         AgentSummary(
@@ -50,6 +60,12 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
         )
         for record in records
     ]
+
+
+def trim_screen_text(screen: str) -> str:
+    lines = "\n".join(line.rstrip() for line in screen.splitlines())
+    text = re.sub(r"\n{3,}", "\n\n", lines).strip("\n")
+    return text[-MAX_SCREEN_CHARACTERS:] if text else "The screen is empty."
 
 
 def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
@@ -69,6 +85,26 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             return _spoken_error(error)
         finally:
             _log_tool_call("list_agents", outcome, started)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
+    def get_agent_activity(agent: str) -> Annotated[CallToolResult, AgentActivity]:
+        """Read what one local herdr agent's screen shows now. `agent` is a name or pane id from
+        list_agents. Tell the user when the screen does not show the agent's task."""
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            if not _is_agent_target(agent):
+                return _error_result("That is not an agent name or pane id.")
+            result = AgentActivity(target=agent, screen=trim_screen_text(herdr.read_screen(agent)))
+            outcome = "ok"
+            return result
+        except HerdrError as error:
+            if error.code == "agent_not_found":
+                return _error_result("No running agent matches that target.")
+            _log_herdr_error(error)
+            return _spoken_error(error)
+        finally:
+            _log_tool_call("get_agent_activity", outcome, started)
 
     app: ASGIApp = server.streamable_http_app(
         json_response=True, transport_security=_transport_security(settings.public_host)
@@ -106,11 +142,18 @@ def _log_tool_call(tool: str, outcome: str, started: float) -> None:
     logger.info("tool call", extra={"tool": tool, "outcome": outcome, "duration_ms": duration_ms})
 
 
+def _is_agent_target(value: str) -> bool:
+    """herdr reads a flag such as `--help` in the target position, and `--` cannot protect it."""
+    return 0 < len(value) <= MAX_TARGET_LENGTH and not value.startswith("-") and "\0" not in value
+
+
 def _spoken_error(error: HerdrError) -> CallToolResult:
     if error.code == "server_not_running":
-        sentence = "herdr is not running on the server."
-    else:
-        sentence = "herdr could not answer the request."
+        return _error_result("herdr is not running on the server.")
+    return _error_result("herdr could not answer the request.")
+
+
+def _error_result(sentence: str) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=sentence)], is_error=True)
 
 

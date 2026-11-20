@@ -15,6 +15,10 @@ from herdr_mcp.herdr import AgentRecord, Herdr, Runner, RunResult
 from herdr_mcp.server import build_app
 
 SNAPSHOT_ARGS = ("herdr", "api", "snapshot")
+SCREEN_TEXT = (
+    "\nTask: rename the config loader  \n\n\n\nRunning tests   \n\n\n\n12 passed\n\n\n\nDone\n"
+)
+TRIMMED_SCREEN = "Task: rename the config loader\n\nRunning tests\n\n12 passed\n\nDone"
 TOKEN = "t" * 32
 SETTING_VARIABLES = [
     "HERDR_MCP_TOKEN",
@@ -66,12 +70,25 @@ INITIALIZE_REQUEST = {
     },
 }
 INITIALIZED_NOTIFICATION = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-LIST_AGENTS_CALL = {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {"name": "list_agents", "arguments": {}},
-}
+
+
+def tool_call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+
+
+LIST_AGENTS_CALL = tool_call("list_agents", {})
+
+
+def screen_read_args(target: str) -> tuple[str, ...]:
+    return ("herdr", "agent", "read", target, "--source", "visible")
+
+
+READ_ALPHA_ARGS = screen_read_args("alpha")
 
 
 @pytest.fixture
