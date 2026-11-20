@@ -10,7 +10,7 @@ import uvicorn
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from herdr_mcp.auth import BearerTokenMiddleware
@@ -23,12 +23,31 @@ LOOPBACK_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 LOOPBACK_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 MAX_TARGET_LENGTH = 64
 MAX_SCREEN_CHARACTERS = 4000
+MAX_MESSAGE_CHARACTERS = 2000
+AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+READY_STATUSES = frozenset({"idle", "done"})
+AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
+READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
+MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
+STATUS_REFUSALS = {
+    "working": "That agent is busy, so I did not send the message.",
+    "blocked": AGENT_BLOCKED,
+}
+PROMPT_FAILURES = {
+    "timeout": MAYBE_SENT,
+    "agent_prompt_failed": MAYBE_SENT,
+    "agent_blocked": AGENT_BLOCKED,
+    "agent_not_ready": "That agent is not ready for a message, so I did not send it.",
+}
 
 SERVER_INSTRUCTIONS = (
     "This server reports the user's own herdr coding agents, live from the user's server. "
     "Call list_agents to learn what the agents are doing and which ones need attention. "
     "Call get_agent_activity with a name or pane id from list_agents "
     "to read what one agent is doing right now. "
+    "Call send_message to give the user's named orchestrator agent an instruction, "
+    "only after you read the exact text back and the user says yes. "
     "Keep answers short enough to speak aloud. "
     "Answer from these tools and do not search the web for herdr-mcp."
 )
@@ -50,6 +69,11 @@ class AgentActivity(BaseModel):
     screen: str
 
 
+class SentMessage(BaseModel):
+    target: str
+    sent: bool
+
+
 def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
     return [
         AgentSummary(
@@ -60,6 +84,15 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
         )
         for record in records
     ]
+
+
+def is_orchestrator(record: AgentRecord) -> bool:
+    return (
+        bool(record.name)
+        and record.is_main_checkout is True
+        and record.tab_number == 1
+        and record.agents_in_tab == 1
+    )
 
 
 def trim_screen_text(screen: str) -> str:
@@ -106,6 +139,56 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         finally:
             _log_tool_call("get_agent_activity", outcome, started)
 
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=False,
+            open_world_hint=False,
+        )
+    )
+    def send_message(
+        agent: str,
+        text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
+    ) -> Annotated[CallToolResult, SentMessage]:
+        """Send one instruction to the user's orchestrator agent, addressed by its herdr name.
+        Read the exact message back to the user and wait for a spoken yes before you call this.
+        The server checks that the agent is the orchestrator and is idle or done just before it
+        sends. The agent can still start working, move to another tab or workspace, or lose its
+        name to a new agent before herdr delivers the message."""
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            if ":" in agent:
+                return _error_result(
+                    "Name the agent instead of its pane. You can name it with herdr agent rename."
+                )
+            if not AGENT_NAME.fullmatch(agent):
+                return _error_result("That is not a valid agent name.")
+            if CONTROL_CHARACTER.search(text):
+                return _error_result("The message contains a character I cannot send.")
+            try:
+                records = herdr.snapshot()
+            except HerdrError as error:
+                _log_herdr_error(error)
+                return _spoken_error(error)
+            refusal = _orchestrator_refusal(agent, records)
+            if refusal is not None:
+                return _error_result(refusal)
+            try:
+                herdr.prompt(agent, text)
+            except HerdrError as error:
+                _log_herdr_error(error)
+                if error.code == "agent_not_found":
+                    return _error_result(f"No agent named {agent} is running.")
+                if error.code in PROMPT_FAILURES:
+                    return _error_result(PROMPT_FAILURES[error.code])
+                return _spoken_error(error)
+            outcome = "ok"
+            return SentMessage(target=agent, sent=True)
+        finally:
+            _log_tool_call("send_message", outcome, started)
+
     app: ASGIApp = server.streamable_http_app(
         json_response=True, transport_security=_transport_security(settings.public_host)
     )
@@ -145,6 +228,19 @@ def _log_tool_call(tool: str, outcome: str, started: float) -> None:
 def _is_agent_target(value: str) -> bool:
     """herdr reads a flag such as `--help` in the target position, and `--` cannot protect it."""
     return 0 < len(value) <= MAX_TARGET_LENGTH and not value.startswith("-") and "\0" not in value
+
+
+def _orchestrator_refusal(name: str, records: list[AgentRecord]) -> str | None:
+    record = next((record for record in records if record.name == name), None)
+    if record is None:
+        return f"No agent named {name} is running."
+    if record.agents_in_tab > 1:
+        return "That tab has more than one agent, so I did not send the message."
+    if not is_orchestrator(record):
+        return "I can only send messages to an orchestrator agent."
+    if record.status not in READY_STATUSES:
+        return STATUS_REFUSALS.get(record.status, READINESS_UNKNOWN)
+    return None
 
 
 def _spoken_error(error: HerdrError) -> CallToolResult:

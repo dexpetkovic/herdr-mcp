@@ -6,6 +6,7 @@ from conftest import (
     SNAPSHOT_ARGS,
     UNREADABLE_STDERR,
     failed_with,
+    prompt_args,
     succeeded,
 )
 
@@ -141,3 +142,29 @@ def test_read_screen_returns_the_visible_screen_unchanged(fake_runner):
     herdr = Herdr("herdr", fake_runner({READ_ALPHA_ARGS: RunResult(0, SCREEN_TEXT, "")}))
 
     assert herdr.read_screen("alpha") == SCREEN_TEXT
+
+
+def test_prompt_passes_the_name_and_text_as_arguments(fake_runner):
+    runner = fake_runner({prompt_args("alpha", "run the tests"): RunResult(0, "", "")})
+
+    Herdr("herdr", runner).prompt("alpha", "run the tests")
+
+    assert runner.calls == [prompt_args("alpha", "run the tests")]
+
+
+def test_failed_prompt_names_only_the_operation(fake_runner):
+    runner = fake_runner({prompt_args("alpha", "run the tests"): failed_with("agent_blocked")})
+
+    with pytest.raises(HerdrError) as raised:
+        Herdr("herdr", runner).prompt("alpha", "run the tests")
+
+    assert (raised.value.code, raised.value.command) == ("agent_blocked", "agent prompt")
+
+
+def test_prompt_that_cannot_launch_names_only_the_operation(tmp_path):
+    args = [str(tmp_path / "missing-herdr"), "agent", "prompt", "alpha", "synthetic secret"]
+
+    with pytest.raises(HerdrError) as raised:
+        subprocess_runner(args, timeout=1.0)
+
+    assert (raised.value.code, raised.value.command) == ("launch_failed", "agent prompt")

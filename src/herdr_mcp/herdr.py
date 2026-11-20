@@ -36,8 +36,13 @@ class HerdrError(Exception):
         self.field = field
 
 
+def _operation_name(args: list[str]) -> str:
+    """Names the herdr operation without its targets or prompt text, which must stay out of logs."""
+    return " ".join(args[:2])
+
+
 def subprocess_runner(args: list[str], timeout: float) -> RunResult:
-    command = " ".join(args[1:])
+    command = _operation_name(args[1:])
     try:
         completed = subprocess.run(
             args, capture_output=True, text=True, errors="replace", timeout=timeout
@@ -80,8 +85,11 @@ class Herdr:
     def read_screen(self, target: str) -> str:
         return self._query(["agent", "read", target, "--source", "visible"])
 
+    def prompt(self, name: str, text: str) -> None:
+        self._query(["agent", "prompt", name, text])
+
     def _query(self, args: list[str]) -> str:
-        command = " ".join(args)
+        command = _operation_name(args)
         result = self._run([self._binary, *args], timeout=TIMEOUT_SECONDS)
         if result.exit_code == INVALID_SYNTAX_EXIT_CODE:
             raise HerdrError("invalid_syntax", command, result.exit_code)
