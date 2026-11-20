@@ -17,8 +17,8 @@ checkout. Choose a hostname in your Cloudflare zone for the public path. `mcp.ex
 that hostname everywhere below. Each path needs its own tools.
 
 - On a Mac, you need `uv` and a herdr CLI of the same version as the running herdr server.
-- On Coolify, you need a Coolify server, a Cloudflare zone and a copy of the repository that you can
-  push to in your own GitHub account.
+- On Coolify, you need a Coolify server whose webhook endpoint GitHub can reach, a Cloudflare zone
+  and a copy of the repository that you can push to in your own GitHub account.
 - On any other Linux server, you need a local Docker daemon and permission to run `docker` as the
   user that runs herdr.
 
@@ -87,13 +87,16 @@ Create the resource with these steps.
    GitHub App resource has this setting by default.
 7. Set the service's domain to `https://mcp.example.com:8765`. The port tells Traefik which
    container port receives the request. Coolify can warn "Unrecognized internal port" before the
-   first build. The warning is harmless.
+   first build. The warning is harmless. Coolify can also warn that the domain's DNS does not point
+   at the server yet. Recheck the domain after step 10 publishes the DNS record.
 8. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
 9. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=mcp.example.com` under **Environment
    Variables**. Coolify refuses to deploy while either is empty.
 10. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
     firewall, the certificate and the DNS record.
 11. Deploy.
+12. Push any commit to `main`. Check that GitHub shows a successful webhook delivery and that
+    Coolify starts a new deployment.
 
 Coolify's proxy files under `/data/coolify/proxy/` belong to root. Run herdr-mcp as a Coolify
 resource, and Coolify writes its Traefik route.
@@ -137,8 +140,9 @@ one public path](#expose-it-through-one-public-path).
 Grok's custom connectors call herdr-mcp from xAI's servers. herdr-mcp therefore needs a public HTTPS
 URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 
-The recommended path has three hops. A proxied Cloudflare DNS record receives the request. A reverse
-proxy on the server, such as Coolify's Traefik, forwards it. The herdr-mcp container answers it.
+The recommended path has three hops. Cloudflare's proxy receives the request, and a proxied DNS
+record sends the hostname there. A reverse proxy on the server, such as Coolify's Traefik, forwards
+it. The herdr-mcp container answers it.
 
 The public path must meet three requirements. Each vendor's own guide gives the steps.
 
@@ -146,14 +150,17 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/). UFW on the server does not
    filter ports that Docker publishes, as [Docker's firewall
    documentation](https://docs.docker.com/engine/network/packet-filtering-firewalls/) explains. The
-   first deployment uses a [Hetzner Cloud
+   first deployment used a [Hetzner Cloud
    Firewall](https://docs.hetzner.com/cloud/firewalls/getting-started/creating-a-firewall/).
 2. The reverse proxy presents a certificate for the hostname that [Full
    (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
-   accepts. The first deployment uses a Cloudflare Origin CA certificate. Create it with
+   accepts. The first deployment used a Cloudflare Origin CA certificate. Create one with
    [Cloudflare's Origin CA guide](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/),
    and skip that guide's step for the SSL/TLS mode. Install it on Coolify's Traefik with [Coolify's
    custom certificate guide](https://coolify.io/docs/core/networking/proxy/traefik/custom-ssl-certs).
+   Do that guide's file and Dynamic Configuration steps before you publish the DNS record. Its
+   verification step needs the public hostname, so run the origin check below after the deploy
+   instead.
 3. Cloudflare's encryption mode for the hostname is **Full (strict)**. When other hostnames share
    the zone, set it for this hostname alone with a [Configuration
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
@@ -164,8 +171,11 @@ server in the provider's console. Hetzner combines the allow rules of all attach
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
-Then test each public address from a network outside Cloudflare while the proxy runs. Set
-`SERVER_IP` to one address, such as `203.0.113.10`. Both ports must print `closed`.
+Then test each public address from a network outside Cloudflare while the proxy runs. The test
+needs a netcat that supports `-z` and a network with a route to the address's IP family. Set
+`SERVER_IP` to one address, such as `203.0.113.10`. Each connection must be refused or time out,
+which prints `closed`. If `nc` prints an error, fix the command or the network before you read the
+result.
 
 ```sh
 SERVER_IP=203.0.113.10
@@ -177,6 +187,15 @@ done
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
 describes.
+
+After the deploy, check the origin certificate on the server itself. A check through the public
+hostname shows Cloudflare's edge certificate instead. The issuer must name Cloudflare's Origin CA
+when you use an Origin CA certificate.
+
+```sh
+openssl s_client -connect 127.0.0.1:443 -servername mcp.example.com </dev/null 2>/dev/null \
+  | openssl x509 -noout -issuer -subject
+```
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
 the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
