@@ -1,0 +1,10 @@
+services:
+  herdr-mcp:
+    build: .
+    # herdr's socket is mode 0600, so the container runs as the socket owner's uid.
+    user: "2001:2001"
+    volumes:
+      - /home/agent/.config/herdr:/herdr:ro
+    environment:
+      HERDR_MCP_TOKEN: ${HERDR_MCP_TOKEN:?}
+      HERDR_MCP_PUBLIC_HOST: ${HERDR_MCP_PUBLIC_HOST:?}
