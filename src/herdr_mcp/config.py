@@ -30,7 +30,7 @@ def load_settings() -> Settings:
         token=_parse_token(os.environ.get("HERDR_MCP_TOKEN")),
         public_host=_parse_public_host(os.environ.get("HERDR_MCP_PUBLIC_HOST")),
         host=_parse_bind_host(os.environ.get("HERDR_MCP_HOST", "127.0.0.1")),
-        port=_parse_port(os.environ.get("HERDR_MCP_PORT", "8000")),
+        port=_parse_port(os.environ.get("HERDR_MCP_PORT", "8765")),
         herdr_binary=_resolve_herdr_binary(os.environ.get("HERDR_BIN", "herdr")),
         log_headers=_parse_log_headers(os.environ.get("HERDR_MCP_LOG_HEADERS", "0")),
     )

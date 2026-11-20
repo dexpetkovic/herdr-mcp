@@ -21,3 +21,14 @@ def test_invalid_setting_names_its_variable(monkeypatch, variable, value):
         load_settings()
 
     assert str(raised.value).startswith(f"{variable} ")
+
+
+def test_port_defaults_to_8765(monkeypatch):
+    for name in SETTING_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HERDR_MCP_TOKEN", TOKEN)
+    monkeypatch.setenv("HERDR_BIN", sys.executable)
+
+    port = load_settings().port
+
+    assert port == 8765

@@ -17,7 +17,7 @@ herdr-mcp runs natively next to herdr on the Mac.
 1. Install it from a checkout with `uv tool install .`.
 2. Start it with `herdr-mcp` in the shell that holds `HERDR_MCP_TOKEN`.
 
-The server listens on `127.0.0.1:8000` and finds herdr's socket in `~/.config/herdr/`.
+The server listens on `127.0.0.1:8765` and finds herdr's socket in `~/.config/herdr/`.
 
 ## On Coolify
 
