@@ -188,7 +188,8 @@ openssl s_client -connect 127.0.0.1:443 -servername mcp.example.com </dev/null 2
 ```
 
 The output must meet three conditions. The issuer names Cloudflare's Origin CA when you use an
-Origin CA certificate. The `notAfter` date lies in the future. The last line reads `Hostname
+Origin CA certificate. The current UTC time falls between the `notBefore` and `notAfter` dates.
+The last line reads `Hostname
 mcp.example.com does match certificate`.
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
