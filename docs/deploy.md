@@ -48,9 +48,12 @@ Docker Desktop on macOS does not pass a Unix socket through reliably. herdr-mcp 
 natively next to herdr on the Mac.
 
 1. Install it from the checkout with `uv tool install .`.
-2. Start it with `herdr-mcp` in the shell that holds `HERDR_MCP_TOKEN`.
+2. If uv warns that its tool directory is not on your path, run `uv tool update-shell`. Then open a
+   new shell and export `HERDR_MCP_TOKEN` there again.
+3. Start it with `herdr-mcp` in the shell that holds `HERDR_MCP_TOKEN`.
 
-The server listens on `127.0.0.1:8765` and finds herdr's socket in `~/.config/herdr/`.
+By default the server listens on `127.0.0.1:8765`. It reaches the herdr server through the socket
+that the herdr CLI selects in that shell.
 
 ## On Coolify
 
@@ -62,7 +65,7 @@ The compose file mounts the herdr socket directory read-only at `/herdr`. The re
 enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the compose
 file publishes no port. Coolify's dashboard uses port 8000 by default, so herdr-mcp listens on 8765.
 
-Set it up once.
+Create the resource with these steps.
 
 1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
    and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
@@ -81,11 +84,9 @@ Set it up once.
 8. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
 9. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=mcp.example.com` under **Environment
    Variables**. Coolify refuses to deploy while either is empty.
-10. Set the server's firewall as [Expose it through one public
-    path](#expose-it-through-one-public-path) describes.
-11. Point a proxied Cloudflare DNS record for `mcp.example.com` at the server. Set the zone's
-    SSL/TLS encryption mode to **Full (strict)**.
-12. Deploy.
+10. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
+    firewall, the certificate and the DNS record.
+11. Deploy.
 
 Coolify's proxy files under `/data/coolify/proxy/` belong to root. Run herdr-mcp as a Coolify
 resource, and Coolify writes its Traefik route.
@@ -120,7 +121,8 @@ user-defined Docker network, because Docker resolves container names only on suc
 
 Point the proxy at the upstream `http://herdr-mcp:8765`.
 
-In both setups the proxy forwards the public Host header unchanged.
+In both setups the proxy forwards the public Host header unchanged. Then follow [Expose it through
+one public path](#expose-it-through-one-public-path).
 
 ## Expose it through one public path
 
@@ -130,20 +132,43 @@ URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 The recommended path has three hops. A proxied Cloudflare DNS record receives the request. A reverse
 proxy on the server, such as Coolify's Traefik, forwards it. The herdr-mcp container answers it.
 
-Keep this path the only public way in. Set the server's firewall to accept ports 80 and 443 only
-from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/). Do this before you publish the DNS
-record. Open no second public path to the server.
+Keep this path the only public way in. Open no second public path to the server. Set it up in this
+order.
 
-Set the zone's encryption mode to **Full (strict)** on the **SSL/TLS Overview** page in Cloudflare.
-Full (strict) needs a valid certificate for the hostname on the origin. The Let's Encrypt
-certificate that Traefik obtains qualifies. The **Flexible** mode loops on Coolify's HTTPS redirect.
+1. Set the server's firewall to accept ports 80 and 443 only from [Cloudflare's IP
+   ranges](https://www.cloudflare.com/ips/).
+2. Create a Cloudflare Origin CA certificate for the hostname on the **Origin Server** page under
+   **SSL/TLS** in Cloudflare. Save the certificate and its private key.
+3. Install the certificate on the reverse proxy. The next paragraph gives the Coolify steps.
+4. Set the zone's encryption mode to **Full (strict)** on the **SSL/TLS Overview** page in
+   Cloudflare.
+5. Point a proxied Cloudflare DNS record for `mcp.example.com` at the server.
 
-Run herdr-mcp as a container on the proxy's network. On the first deployment, a host process behind
-Coolify's Traefik timed out. UFW dropped the traffic from Coolify's bridge networks to the host.
-Traefik answered 504 after 30 seconds.
+On Coolify, the certificate files go in `/data/coolify/proxy/certs/` on the server. That directory
+belongs to root, so this step needs a shell with write access to it. Save the files as `origin.cert`
+and `origin.key`. Then add an entry under **Server > Proxy > Dynamic Configuration** in Coolify.
+Its name must end in `.yaml`, and it holds this configuration. Coolify's [Origin CA
+guide](https://coolify.io/docs/knowledge-base/cloudflare/origin-cert) shows the same steps.
 
-Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. The MCP SDK answers 421 to a Host header it does
-not know.
+```yaml
+tls:
+  certificates:
+    - certFile: /traefik/certs/origin.cert
+      keyFile: /traefik/certs/origin.key
+```
+
+Full (strict) accepts only an origin certificate that Cloudflare trusts and that covers the
+hostname. An Origin CA certificate needs no issuance through the proxy. A Let's Encrypt certificate
+also qualifies, but Cloudflare's proxy can break its HTTP challenge. Use the [DNS-01
+challenge](https://coolify.io/docs/core/networking/proxy/traefik/dns-challenge) for Let's Encrypt
+behind Cloudflare. The **Flexible** mode loops on Coolify's HTTPS redirect.
+
+When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
+the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
+from Coolify's bridge networks to the host. Traefik answered 504 after 30 seconds.
+
+Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. The MCP SDK answers 421 to a Host header outside
+its allowed list. The list holds the loopback hosts and `HERDR_MCP_PUBLIC_HOST`.
 
 Private access over Tailscale needs no public path. A DNS-only hostname that points at a Tailscale
 address cannot pass Let's Encrypt's HTTP challenge. Its certificate needs the [DNS-01
@@ -177,11 +202,11 @@ Add the connector.
    `HERDR_MCP_TOKEN`.
 4. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
-The two probes never touch the herdr socket. Only Grok's answer in step 4 proves the whole path. On
-the first deployment, Grok showed the tool as `herdr_mcp___list_agents`.
+The two probes never touch the herdr socket. Compare Grok's answer with the agents in your herdr
+session. On the first deployment, Grok showed the tool as `herdr_mcp___list_agents`.
 
-A connector added at grok.com also works in the Grok mobile app. On 2026-11-20, Grok listed live
-agents from the mobile app. Grok in a car has no recorded test yet.
+On the first deployment, a connector added at grok.com also worked in the Grok mobile app. On
+2026-11-20, Grok listed live agents from the mobile app. Grok in a car has no recorded test yet.
 
 At least 15 public repositories share the name herdr-mcp. This project is the repository
 `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
@@ -192,20 +217,21 @@ the client to answer from this live server. Whether Grok follows them is not yet
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A request with the token returns `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
-| A request returns `421`. | The Host header differs from `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
+| A request that sends the token gets `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
+| A request gets `421`. | The Host header is neither a loopback host nor `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
 | Traefik returns `504` after 30 seconds. | The host firewall drops traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
 | The browser reports too many redirects. | The Cloudflare zone uses the **Flexible** encryption mode. | Set the mode to **Full (strict)**. |
-| Cloudflare returns `526`. | The origin has no valid certificate for the hostname. | Wait for Traefik's Let's Encrypt certificate, and check the domain in Coolify. |
+| Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Install the Origin CA certificate and its Dynamic Configuration entry. For Let's Encrypt behind Cloudflare, use the DNS-01 challenge. |
 | herdr reports a permission error on `herdr.sock`. | herdr-mcp runs as a user that does not own the socket. | Run it with the uid and gid that `id -u` and `id -g` print for the herdr user. |
 | `herdr status` inside the container prints `endpoint_compatible: no`. | The image's herdr CLI differs from the running server's version. | Follow [Upgrading herdr](#upgrading-herdr). |
-| `list_agents` reports agents from another herdr session. | A native herdr-mcp inherited `HERDR_SOCKET_PATH` from a herdr pane. | Run `echo "$HERDR_SOCKET_PATH"` in the shell that starts herdr-mcp. Start it in a shell where that path names the session you want. |
+| A native herdr-mcp reports agents from another herdr session. | It inherited `HERDR_SOCKET_PATH` from a herdr pane. | Run `echo "$HERDR_SOCKET_PATH"` in the shell that starts herdr-mcp. Start it in a shell where that path names the session you want. |
+| The container reports agents from another herdr session. | The container reads only `herdr.sock` in the mounted directory. | Check that the mounted directory holds the socket of the session you want to expose. |
 | Naming an agent fails because the name is taken. | Agent names are global per herdr server. | Give the agent a name that no other agent on the server uses. |
 | The domain also answers on `www.`. | Coolify added a `www.` copy of the domain. | Remove it under **Public access**. |
 | Grok answers about a different herdr-mcp project. | Grok searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
 
 On the first deployment, one Grok question produced five requests in the container log. All came
-from the proxy's address. `initialize` returned 200, and the initialized notification returned 202.
+from the proxy's address. `initialize` returned 200. The initialized notification returned 202.
 `GET /mcp` opened the server stream and returned 200. The tool request returned 200. `DELETE /mcp`
 returned 200.
 
