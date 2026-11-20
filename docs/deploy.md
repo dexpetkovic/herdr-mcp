@@ -77,30 +77,32 @@ Create the resource with these steps.
 1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
    and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
    `.config/herdr` directory as an absolute path. Push the change to `main`.
-2. Set up the HTTPS dashboard hostname in [Coolify webhook over
-   HTTPS](#coolify-webhook-over-https) first, because the GitHub App records its webhook URL
-   when you create it. Then create a GitHub App source in Coolify with [Coolify's GitHub App
+2. Apply the provider firewall in [Firewall](#firewall). Do this before any later step publishes
+   Coolify's dashboard.
+3. Set up the HTTPS dashboard hostname in [Coolify webhook over
+   HTTPS](#coolify-webhook-over-https), because the GitHub App records its webhook URL when you
+   create it. Then create a GitHub App source in Coolify with [Coolify's GitHub App
    guide](https://coolify.io/docs/applications/sources/github/app). Give it access to your copy of
    the repository.
-3. Add a new resource from the GitHub App source. Pick your copy of the repository and select the
+4. Add a new resource from the GitHub App source. Pick your copy of the repository and select the
    `main` branch.
-4. Select the Docker Compose build pack. The Dockerfile build pack ignores the Compose file's `user`
+5. Select the Docker Compose build pack. The Dockerfile build pack ignores the Compose file's `user`
    line and socket mount.
-5. Set **Base Directory** to `/` and **Docker Compose Location** to `/docker-compose.coolify.yaml`.
-6. Check that **Advanced > Deployment > Auto deploy** is set to **Deploy on push (webhooks)**. A
+6. Set **Base Directory** to `/` and **Docker Compose Location** to `/docker-compose.coolify.yaml`.
+7. Check that **Advanced > Deployment > Auto deploy** is set to **Deploy on push (webhooks)**. A
    GitHub App resource has this setting by default.
-7. Set the service's domain to `https://mcp.example.com:8765`. The port tells Traefik which
+8. Set the service's domain to `https://mcp.example.com:8765`. The port tells Traefik which
    container port receives the request. Coolify can warn "Unrecognized internal port" before the
    first build. The warning is harmless. Coolify can also warn that the domain's DNS does not point
-   at the server yet. Recheck the domain after step 10 publishes the DNS record.
-8. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
-9. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=mcp.example.com` under **Environment
+   at the server yet. Recheck the domain after step 11 publishes the DNS record.
+9. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
+10. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=mcp.example.com` under **Environment
    Variables**. Coolify refuses to deploy while either is empty.
-10. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
-    firewall, the certificate and the DNS record.
-11. Deploy. Then run the origin certificate check at the end of [Expose it through one public
+11. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
+    certificate and the DNS record.
+12. Deploy. Then run the origin certificate check at the end of [Expose it through one public
     path](#expose-it-through-one-public-path).
-12. Push any commit to `main`. Check that GitHub shows a successful webhook delivery and that
+13. Push any commit to `main`. Check that GitHub shows a successful webhook delivery and that
     Coolify starts a new deployment.
 
 Coolify's proxy files under `/data/coolify/proxy/` belong to root. Run herdr-mcp as a Coolify
@@ -173,23 +175,27 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
    **Flexible** mode loops on Coolify's HTTPS redirect.
 
+### Firewall
+
 Keep an administrator path open. Add a rule that allows SSH from your own address or a private
 network such as Tailscale. On Coolify, add the same rule for the dashboard port, 8000 by default.
-Narrow or remove every other allow rule for the dashboard port, in every firewall attached to the
-server. Apply the firewall. Then open a fresh SSH session to confirm that SSH still works. On Coolify,
+Narrow or remove every other allow rule for ports 8000, 6001 and 6002, in every firewall attached
+to the server. Apply the firewall. Then open a fresh SSH session to confirm that SSH still works. On Coolify,
 reload the dashboard through the administrator path to confirm that it still works.
 
 Check requirement 1 before you publish the DNS record. Open every firewall that applies to the
 server in the provider's console. Hetzner combines the allow rules of all attached firewalls, as its
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server. On Coolify,
-confirm that the dashboard port accepts only your administrator sources.
+confirm that ports 8000, 6001 and 6002 accept only your administrator sources. Coolify publishes the
+dashboard on 8000, its update service on 6001 and its web terminal on 6002. Confirm that no other
+port accepts public traffic.
 
 ### Coolify webhook over HTTPS
 
 On Coolify, the firewall also blocks GitHub's webhook deliveries to the dashboard port. GitHub
 reaches Coolify through Cloudflare over HTTPS instead. This route makes the dashboard's login page
-publicly reachable through Cloudflare. Set this up before you create the GitHub App,
+publicly reachable through Cloudflare. Set this up after the firewall and before you create the GitHub App,
 because the app records its webhook URL when you create it.
 
 1. Choose a dashboard hostname, such as `coolify.example.com`. Point a proxied Cloudflare DNS record
@@ -207,7 +213,7 @@ because the app records its webhook URL when you create it.
    `https://coolify.example.com` as the base URL. Cloudflare's proxy does not forward port 8000.
 
 The first deployment allowed GitHub's webhook IP ranges on port 8000 instead. That path sends
-payloads over plain HTTP, so this guide does not use it. Coolify step 12 confirms a delivery
+payloads over plain HTTP, so this guide does not use it. Coolify step 13 confirms a delivery
 afterwards. A Cloudflare Access policy on the dashboard hostname must let the GitHub App's webhook
 through.
 
