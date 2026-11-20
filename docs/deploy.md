@@ -76,8 +76,12 @@ the host, change its default in `Dockerfile` to the new version. On Coolify, pus
 On any other Linux server, rebuild the image with `docker build -t herdr-mcp .`. Remove the old
 container with `docker rm -f herdr-mcp`. Then start it again with the `docker run` command above.
 
-Check the versions on either setup with this command.
+Check the versions after the upgrade. On any other Linux server the container is `herdr-mcp`. On
+Coolify, `docker ps --filter name=herdr-mcp` lists the container names. A preview container's name
+contains `-pr-`, and the production container's name does not. Set `CONTAINER` to the production
+name on Coolify.
 
 ```sh
-docker exec "$(docker ps -q --filter name=herdr-mcp)" herdr status
+CONTAINER=herdr-mcp
+docker exec "$CONTAINER" herdr status
 ```
