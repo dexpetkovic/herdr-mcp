@@ -67,8 +67,8 @@ Coolify builds the image from `Dockerfile` on the server and runs it with
 `docker-compose.coolify.yaml`. Every push to `main` triggers a new build and deploy through
 Coolify's GitHub App source.
 
-The compose file mounts the herdr socket directory read-only at `/herdr`. The read-only mount is
-enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the compose
+The Compose file mounts the herdr socket directory read-only at `/herdr`. The read-only mount is
+enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the Compose
 file publishes no port. On the first deployment, Coolify held port 8000, so herdr-mcp listens on
 8765.
 
@@ -84,7 +84,7 @@ Create the resource with these steps.
    the repository.
 3. Add a new resource from the GitHub App source. Pick your copy of the repository and select the
    `main` branch.
-4. Select the Docker Compose build pack. The Dockerfile build pack ignores the compose file's `user`
+4. Select the Docker Compose build pack. The Dockerfile build pack ignores the Compose file's `user`
    line and socket mount.
 5. Set **Base Directory** to `/` and **Docker Compose Location** to `/docker-compose.coolify.yaml`.
 6. Check that **Advanced > Deployment > Auto deploy** is set to **Deploy on push (webhooks)**. A
@@ -147,7 +147,7 @@ URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 
 The recommended path has three hops. The proxied DNS record resolves to Cloudflare, and Cloudflare
 forwards each request to the origin. A reverse proxy on the server, such as Coolify's Traefik, forwards
-it. The herdr-mcp container answers it.
+it to the herdr-mcp container, which answers it.
 
 The public path must meet three requirements. Each vendor's own guide gives the steps.
 
@@ -173,26 +173,32 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
    **Flexible** mode loops on Coolify's HTTPS redirect.
 
-Keep an administrator path open before you apply the firewall. Allow SSH and Coolify's dashboard
-port, 8000 by default, from your own address or a private network such as Tailscale. Then open a new
-SSH session and the dashboard to confirm that both still work.
+Keep an administrator path open. Add rules that allow SSH and Coolify's dashboard port, 8000 by
+default, from your own address or a private network such as Tailscale. Apply the firewall. Then open
+a fresh SSH session and reload the dashboard to confirm that both still work.
 
 Check requirement 1 before you publish the DNS record. Open every firewall that applies to the
 server in the provider's console. Hetzner combines the allow rules of all attached firewalls, as its
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
-The firewall also blocks GitHub's webhook deliveries to Coolify on the same server. Keep them
-working with one of two options before you restrict it.
+The firewall also blocks GitHub's webhook deliveries to Coolify on the same server. Choose how
+GitHub reaches Coolify before you create the GitHub App, because the app records its webhook URL
+when you create it.
 
-1. Allow GitHub's webhook IP ranges on the port of Coolify's webhook URL, 8000 by default.
-   GitHub's `meta` API on `api.github.com` lists them under `hooks`. The first deployment's firewall
-   does this.
-2. Serve Coolify on an HTTPS hostname on port 443 behind Cloudflare. Set the GitHub App's webhook
-   endpoint to that hostname when you create the app. Cloudflare's proxy does not serve port 8000.
+1. Serve Coolify's dashboard on a Cloudflare-proxied HTTPS hostname on port 443, such as
+   `coolify.example.com`. Set that `https://` address as **URL** in Coolify's [instance
+   settings](https://coolify.io/docs/core/instance-management/instance-settings). When you create
+   the GitHub App, choose **Use a custom endpoint** and enter that HTTPS base URL. Cloudflare's
+   proxy does not forward port 8000.
+2. As the alternative, allow GitHub's webhook IP ranges on Coolify's port, 8000 by default.
+   GitHub's `meta` API on `api.github.com` lists them under `hooks`. This option sends webhooks
+   over plain HTTP. GitHub signs each payload with the webhook secret, but the payload travels
+   unencrypted. The first deployment's firewall uses this option.
 
-Coolify's webhook URL must resolve to an address GitHub can reach. A hostname that points at a
-private VPN address breaks deploy on push. Coolify step 12 confirms a delivery afterwards.
+With option 2, Coolify's webhook URL must resolve to an address GitHub can reach. A hostname that
+points at a private VPN address breaks deploy on push. Coolify step 12 confirms a delivery
+afterwards.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
