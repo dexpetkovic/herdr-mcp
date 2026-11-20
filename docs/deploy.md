@@ -21,7 +21,7 @@ checkout. Each path needs its own tools.
 - On any other Linux server, you need Docker and permission to run `docker` as the user that runs
   herdr.
 
-The herdr CLI talks to the herdr server through the Unix socket `~/.config/herdr/herdr.sock`. A Unix
+The herdr CLI talks to the herdr server through a Unix socket, by default `~/.config/herdr/herdr.sock`. A Unix
 socket cannot cross machines, so herdr-mcp runs on the machine that runs the herdr server.
 
 The socket has mode 0600. herdr-mcp must run as the user that owns the herdr server. Run `id -u` and
@@ -40,7 +40,7 @@ Agent names are global per herdr server. Two repositories on one server cannot b
 `herdr status` prints the running server's version under `server:`. `herdr --version` prints the
 installed binary's version. The installed binary can be newer than the running server until herdr
 restarts. The herdr CLI that herdr-mcp runs must match the server version. [Upgrading
-herdr](#upgrading-herdr) explains how to keep them equal.
+herdr](#upgrading-herdr) explains how to match them.
 
 ## On a Mac
 
@@ -54,6 +54,9 @@ natively next to herdr on the Mac.
 
 By default the server listens on `127.0.0.1:8765`. It reaches the herdr server through the socket
 that the herdr CLI selects in that shell.
+
+The Mac setup serves MCP clients on the same Mac. Grok needs the public path, which this guide covers
+for a Linux server only.
 
 ## On Coolify
 
@@ -132,23 +135,32 @@ URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 The recommended path has three hops. A proxied Cloudflare DNS record receives the request. A reverse
 proxy on the server, such as Coolify's Traefik, forwards it. The herdr-mcp container answers it.
 
-Keep this path the only public way in. Open no second public path to the server. Set it up in this
-order.
+The public path must meet three requirements.
 
-1. Set the server's firewall to accept ports 80 and 443 only from [Cloudflare's IP
-   ranges](https://www.cloudflare.com/ips/).
+1. Cloudflare is the only public way in. A firewall in front of the server accepts ports 80 and 443
+   only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/). UFW on the server does not
+   filter ports that Docker publishes, as [Docker's firewall
+   documentation](https://docs.docker.com/engine/network/packet-filtering-firewalls/) explains. Use
+   the hosting provider's firewall instead.
+2. The reverse proxy presents a certificate for the hostname that Cloudflare trusts.
+3. Cloudflare's encryption mode for the hostname is **Full (strict)**. [Cloudflare's encryption
+   modes](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/) explain how to set
+   it for the zone or for one hostname. The **Flexible** mode loops on Coolify's HTTPS redirect.
+
+The first deployment meets them with Hetzner's Cloud Firewall, a Cloudflare Origin CA certificate on
+Coolify's Traefik and Full (strict) for its zone. On Coolify, follow these steps.
+
+1. Set the provider firewall as requirement 1 states.
 2. Create a Cloudflare Origin CA certificate for the hostname on the **Origin Server** page under
-   **SSL/TLS** in Cloudflare. Save the certificate and its private key.
-3. Install the certificate on the reverse proxy. The next paragraph gives the Coolify steps.
-4. Set the zone's encryption mode to **Full (strict)** on the **SSL/TLS Overview** page in
-   Cloudflare.
-5. Point a proxied Cloudflare DNS record for `mcp.example.com` at the server.
-
-On Coolify, the certificate files go in `/data/coolify/proxy/certs/` on the server. That directory
-belongs to root, so this step needs a shell with write access to it. Save the files as `origin.cert`
-and `origin.key`. Then add an entry under **Server > Proxy > Dynamic Configuration** in Coolify.
-Its name must end in `.yaml`, and it holds this configuration. Coolify's [Origin CA
-guide](https://coolify.io/docs/knowledge-base/cloudflare/origin-cert) shows the same steps.
+   **SSL/TLS** in Cloudflare.
+3. In a root shell on the server, save the certificate as `/data/coolify/proxy/certs/origin.cert`
+   and the private key as `/data/coolify/proxy/certs/origin.key`. Run
+   `chmod 600 /data/coolify/proxy/certs/origin.key`.
+4. Add an entry under **Server > Proxy > Dynamic Configuration** in Coolify. Its name must end in
+   `.yaml`, and it holds the configuration below. Coolify's [Origin CA
+   guide](https://coolify.io/docs/knowledge-base/cloudflare/origin-cert) shows the same steps.
+5. Set **Full (strict)** for the hostname as requirement 3 states.
+6. Point a proxied Cloudflare DNS record for `mcp.example.com` at the server.
 
 ```yaml
 tls:
@@ -157,11 +169,9 @@ tls:
       keyFile: /traefik/certs/origin.key
 ```
 
-Full (strict) accepts only an origin certificate that Cloudflare trusts and that covers the
-hostname. An Origin CA certificate needs no issuance through the proxy. A Let's Encrypt certificate
-also qualifies, but Cloudflare's proxy can break its HTTP challenge. Use the [DNS-01
-challenge](https://coolify.io/docs/core/networking/proxy/traefik/dns-challenge) for Let's Encrypt
-behind Cloudflare. The **Flexible** mode loops on Coolify's HTTPS redirect.
+On any other Linux server, meet the three requirements with your own proxy and provider firewall.
+Then point a proxied Cloudflare DNS record at the server. A Let's Encrypt certificate also meets
+requirement 2. Cloudflare's proxy can break its HTTP challenge, so use the DNS-01 challenge.
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
 the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
@@ -202,14 +212,14 @@ Add the connector.
    `HERDR_MCP_TOKEN`.
 4. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
-The two probes never touch the herdr socket. Compare Grok's answer with the agents in your herdr
-session. On the first deployment, Grok showed the tool as `herdr_mcp___list_agents`.
+The two probes never touch the herdr socket. On the first deployment, Grok showed the tool as
+`herdr_mcp___list_agents`.
 
 On the first deployment, a connector added at grok.com also worked in the Grok mobile app. On
 2026-11-20, Grok listed live agents from the mobile app. Grok in a car has no recorded test yet.
 
-At least 15 public repositories share the name herdr-mcp. This project is the repository
-`dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
+On 2026-11-20, at least 15 public repositories shared the name herdr-mcp. This project is the
+repository `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
 `get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
 the client to answer from this live server. Whether Grok follows them is not yet verified.
 
@@ -220,8 +230,8 @@ the client to answer from this live server. Whether Grok follows them is not yet
 | A request that sends the token gets `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
 | A request gets `421`. | The Host header is neither a loopback host nor `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
 | Traefik returns `504` after 30 seconds. | The host firewall drops traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
-| The browser reports too many redirects. | The Cloudflare zone uses the **Flexible** encryption mode. | Set the mode to **Full (strict)**. |
-| Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Install the Origin CA certificate and its Dynamic Configuration entry. For Let's Encrypt behind Cloudflare, use the DNS-01 challenge. |
+| The browser reports too many redirects. | Cloudflare uses the **Flexible** encryption mode for the hostname. | Set **Full (strict)** for the hostname. |
+| Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Meet requirement 2 in [Expose it through one public path](#expose-it-through-one-public-path). |
 | herdr reports a permission error on `herdr.sock`. | herdr-mcp runs as a user that does not own the socket. | Run it with the uid and gid that `id -u` and `id -g` print for the herdr user. |
 | `herdr status` inside the container prints `endpoint_compatible: no`. | The image's herdr CLI differs from the running server's version. | Follow [Upgrading herdr](#upgrading-herdr). |
 | A native herdr-mcp reports agents from another herdr session. | It inherited `HERDR_SOCKET_PATH` from a herdr pane. | Run `echo "$HERDR_SOCKET_PATH"` in the shell that starts herdr-mcp. Start it in a shell where that path names the session you want. |
