@@ -1,7 +1,7 @@
 services:
   herdr-mcp:
-    image: ghcr.io/dexpetkovic/herdr-mcp:latest
-    # The uid and gid own herdr's socket on the host.
+    build: .
+    # herdr's socket is mode 0600, so the container runs as the socket owner's uid.
     user: "2001:2001"
     volumes:
       - /home/agent/.config/herdr:/herdr:ro

@@ -1,75 +1,74 @@
 # Deploying herdr-mcp
 
 herdr-mcp must run on the machine where the herdr server runs. It reaches herdr through herdr's Unix
-socket. The herdr CLI that herdr-mcp calls must have the same version as the herdr server.
-`herdr status` prints both versions and reports `endpoint_compatible: yes` when they match.
+socket. The herdr CLI that herdr-mcp calls must have the same version as the herdr server. Run
+`herdr status` and compare the client and server versions it prints.
 
 Every setting comes from an environment variable. `HERDR_MCP_TOKEN` is required in every setup.
-Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+Generate one and keep it in the shell.
+
+```sh
+export HERDR_MCP_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+```
 
 ## On a Mac
 
 herdr-mcp runs natively next to herdr on the Mac.
 
 1. Install it from a checkout with `uv tool install .`.
-2. Start it with `HERDR_MCP_TOKEN=<token> herdr-mcp`.
+2. Start it with `herdr-mcp` in the shell that holds `HERDR_MCP_TOKEN`.
 
 The server listens on `127.0.0.1:8000` and finds herdr's socket in `~/.config/herdr/`.
 
 ## On Coolify
 
-The workflow `.github/workflows/image.yml` builds the image on every push to `main`. It pushes
-`ghcr.io/dexpetkovic/herdr-mcp` with the tags `latest` and `sha-<short commit>`. It then calls
-Coolify's deploy webhook. Coolify pulls `latest` and runs it with `docker-compose.coolify.yaml`.
+Coolify builds the image from `Dockerfile` on the server and runs it with
+`docker-compose.coolify.yaml`. Every push to `main` triggers a new build and deploy through the
+GitHub App source.
 
 The container runs as uid 2001, which owns herdr's socket on the server. It mounts
-`/home/agent/.config/herdr` read-only at `/herdr`. Coolify's Traefik reaches the container on the
-`coolify` network, so the compose file publishes no port.
+`/home/agent/.config/herdr` read-only at `/herdr`. Coolify connects Traefik to the application's
+Compose network, so the compose file publishes no port.
 
 Set it up once.
 
-1. Create a classic GitHub personal access token with `read:packages`. In Coolify, open
-   **Registries**, choose the GHCR preset and log the server in with that token. Coolify runs
-   `docker login ghcr.io` for the server.
-2. Add a new resource from the GitHub App source and pick this repository.
-3. Select the Docker Compose build pack.
-4. Set **Base Directory** to `/` and **Docker Compose Location** to `/docker-compose.coolify.yaml`.
-5. Set **Advanced > Deployment > Auto deploy** to **Manual deployments only**. The workflow then
-   starts every deploy after the image exists.
-6. Set the service's domain to `https://herdr-mcp.elands.studio:8765`. The port tells Traefik which
+1. Add a new resource from the GitHub App source and pick this repository.
+2. Select the Docker Compose build pack.
+3. Set **Base Directory** to `/` and **Docker Compose Location** to `/docker-compose.coolify.yaml`.
+4. Check that **Advanced > Deployment > Auto deploy** is set to **Deploy on push (webhooks)**.
+5. Set the service's domain to `https://herdr-mcp.elands.studio:8765`. The port tells Traefik which
    container port receives the request.
-7. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=herdr-mcp.elands.studio` under **Environment
+6. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=herdr-mcp.elands.studio` under **Environment
    Variables**. Coolify refuses to deploy while either is empty.
-8. Point a proxied Cloudflare DNS record for `herdr-mcp.elands.studio` at the server.
-9. Enable **Settings > Advanced > API access**. Create an API token with only the **Deploy**
-   permission under **Keys & Tokens > API Tokens**.
-10. Copy the resource's deploy webhook URL from its **Webhooks** page.
-11. Add the repository secrets `COOLIFY_WEBHOOK` with that URL and `COOLIFY_TOKEN` with the token
-    under **Settings > Secrets and variables > Actions** on GitHub.
+7. Point a proxied Cloudflare DNS record for `herdr-mcp.elands.studio` at the server.
+8. Deploy.
+
+Cloudflare stays the only public way in when the server's firewall accepts ports 80 and 443 only
+from Cloudflare's IP ranges.
 
 Change the uid, gid and mount source in the compose file when herdr runs as another user.
 
 ## On any other Linux server
 
-Build the image from `Dockerfile` and run it next to herdr.
+Build the image from `Dockerfile` and run it next to herdr. Run the commands as the user that runs
+herdr, in a shell that holds `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST`.
 
 ```sh
 docker build -t herdr-mcp .
 docker run -d --restart unless-stopped \
   --user "$(id -u):$(id -g)" \
   -v "$HOME/.config/herdr:/herdr:ro" \
-  -e HERDR_MCP_TOKEN=<token> \
-  -e HERDR_MCP_PUBLIC_HOST=<public hostname> \
+  -e HERDR_MCP_TOKEN="$HERDR_MCP_TOKEN" \
+  -e HERDR_MCP_PUBLIC_HOST="$HERDR_MCP_PUBLIC_HOST" \
   -p 127.0.0.1:8765:8765 \
   herdr-mcp
 ```
 
-Run the commands as the user that runs herdr. Put an HTTPS reverse proxy in front of
-`127.0.0.1:8765` for the public hostname.
+Put an HTTPS reverse proxy in front of `127.0.0.1:8765` for the public hostname.
 
 ## Upgrading herdr
 
 The image pins the herdr CLI with the build argument `HERDR_VERSION`. After every herdr upgrade on
-the host, change its default in `Dockerfile` to the new version. On Coolify, merging that change
-rebuilds and redeploys the image. Elsewhere, rebuild the image. Check the result with
+the host, change its default in `Dockerfile` to the new version. On Coolify, pushing that change to
+`main` rebuilds and redeploys the image. Elsewhere, rebuild the image. Check the result with
 `docker exec <container> herdr status`.

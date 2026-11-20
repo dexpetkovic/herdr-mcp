@@ -5,9 +5,12 @@ ARG HERDR_VERSION=0.9.5
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /usr/local/bin/uv
 
-RUN python -c "import platform, urllib.request; urllib.request.urlretrieve( \
+RUN mkdir -p /usr/share/doc/herdr \
+    && python -c "import platform, urllib.request as r; r.urlretrieve( \
       'https://github.com/herdrdev/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-' \
-      + platform.machine(), '/usr/local/bin/herdr')" \
+      + platform.machine(), '/usr/local/bin/herdr'); r.urlretrieve( \
+      'https://raw.githubusercontent.com/herdrdev/herdr/v${HERDR_VERSION}/LICENSE', \
+      '/usr/share/doc/herdr/LICENSE')" \
     && chmod 755 /usr/local/bin/herdr
 
 WORKDIR /app
