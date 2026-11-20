@@ -175,13 +175,15 @@ The public path must meet three requirements. Each vendor's own guide gives the 
 
 Keep an administrator path open. Add a rule that allows SSH from your own address or a private
 network such as Tailscale. On Coolify, add the same rule for the dashboard port, 8000 by default.
-Apply the firewall. Then open
-a fresh SSH session and reload the dashboard to confirm that both still work.
+Narrow or remove every other allow rule for the dashboard port, in every firewall attached to the
+server. Apply the firewall. Then open a fresh SSH session to confirm that SSH still works. On Coolify,
+reload the dashboard through the administrator path to confirm that it still works.
 
 Check requirement 1 before you publish the DNS record. Open every firewall that applies to the
 server in the provider's console. Hetzner combines the allow rules of all attached firewalls, as its
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
-accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
+accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server. On Coolify,
+confirm that the dashboard port accepts only your administrator sources.
 
 ### Coolify webhook over HTTPS
 
