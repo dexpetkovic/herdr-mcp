@@ -1,5 +1,6 @@
+import copy
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -11,7 +12,7 @@ from starlette.testclient import TestClient
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import Settings
-from herdr_mcp.herdr import AgentRecord, Herdr, Runner, RunResult
+from herdr_mcp.herdr import AgentRecord, Herdr, HerdrError, RunResult
 from herdr_mcp.server import build_app
 
 SNAPSHOT_ARGS = ("herdr", "api", "snapshot")
@@ -91,6 +92,25 @@ def screen_read_args(target: str) -> tuple[str, ...]:
 READ_ALPHA_ARGS = screen_read_args("alpha")
 
 
+def prompt_args(name: str, text: str) -> tuple[str, ...]:
+    return ("herdr", "agent", "prompt", name, text)
+
+
+class FakeRunner:
+    """Answers each herdr call from canned results, raising a result that is an exception."""
+
+    def __init__(self, results: dict[tuple[str, ...], RunResult | Exception]) -> None:
+        self._results = results
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, args: list[str], timeout: float) -> RunResult:
+        self.calls.append(tuple(args))
+        result = self._results[tuple(args)]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
 @pytest.fixture
 def snapshot_json() -> dict[str, Any]:
     return {
@@ -118,14 +138,8 @@ def snapshot_json() -> dict[str, Any]:
 
 
 @pytest.fixture
-def fake_runner() -> Callable[[dict[tuple[str, ...], RunResult]], Runner]:
-    def build(results: dict[tuple[str, ...], RunResult]) -> Runner:
-        def run(args: list[str], timeout: float) -> RunResult:
-            return results[tuple(args)]
-
-        return run
-
-    return build
+def fake_runner() -> type[FakeRunner]:
+    return FakeRunner
 
 
 @pytest.fixture
@@ -146,6 +160,25 @@ def auth_client() -> TestClient:
     return TestClient(BearerTokenMiddleware(stub, TOKEN))
 
 
+def orchestrator_snapshot(
+    snapshot_json: dict[str, Any],
+    status: str = "idle",
+    shared_tab: bool = False,
+    tab_number: int = 1,
+) -> dict[str, Any]:
+    """Puts `alpha` in tab `w1:t1` of the main checkout, alone unless `shared_tab` is true."""
+    payload = copy.deepcopy(snapshot_json)
+    snapshot = payload["result"]["snapshot"]
+    snapshot["agents"][0]["agent_status"] = status
+    snapshot["tabs"][0]["number"] = tab_number
+    if not shared_tab:
+        snapshot["agents"][1]["tab_id"] = "w1:t2"
+        snapshot["tabs"].append(
+            {"tab_id": "w1:t2", "workspace_id": "w1", "number": 3, "label": "3"}
+        )
+    return payload
+
+
 def succeeded(payload: Any) -> RunResult:
     return RunResult(exit_code=0, stdout=json.dumps(payload), stderr="")
 
@@ -153,6 +186,59 @@ def succeeded(payload: Any) -> RunResult:
 def failed_with(code: str) -> RunResult:
     stderr = json.dumps({"error": {"code": code, "message": "synthetic failure"}})
     return RunResult(exit_code=1, stdout="", stderr=stderr)
+
+
+MESSAGE = "run the tests"
+NOT_ORCHESTRATOR = "I can only send messages to an orchestrator agent."
+AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
+MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
+SEND_MESSAGE_REFUSALS = [
+    (
+        "w1:p1",
+        MESSAGE,
+        {},
+        [],
+        "Name the agent instead of its pane. You can name it with herdr agent rename.",
+    ),
+    ("Alpha!", MESSAGE, {}, [], "That is not a valid agent name."),
+    ("alpha", "run\0 the tests", {}, [], "The message contains a character I cannot send."),
+    ("delta", MESSAGE, {}, [SNAPSHOT_ARGS], "No agent named delta is running."),
+    (
+        "alpha",
+        MESSAGE,
+        {"shared_tab": True},
+        [SNAPSHOT_ARGS],
+        "That tab has more than one agent, so I did not send the message.",
+    ),
+    ("alpha", MESSAGE, {"tab_number": 2}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
+    ("beta", MESSAGE, {}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
+    ("gamma", MESSAGE, {}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
+    (
+        "alpha",
+        MESSAGE,
+        {"status": "working"},
+        [SNAPSHOT_ARGS],
+        "That agent is busy, so I did not send the message.",
+    ),
+    ("alpha", MESSAGE, {"status": "blocked"}, [SNAPSHOT_ARGS], AGENT_BLOCKED),
+    (
+        "alpha",
+        MESSAGE,
+        {"status": "unknown"},
+        [SNAPSHOT_ARGS],
+        "I cannot tell whether that agent is ready, so I did not send the message.",
+    ),
+]
+PROMPT_FAILURE_SENTENCES = [
+    (failed_with("agent_blocked"), AGENT_BLOCKED),
+    (
+        failed_with("agent_not_ready"),
+        "That agent is not ready for a message, so I did not send it.",
+    ),
+    (failed_with("agent_not_found"), "No agent named alpha is running."),
+    (failed_with("agent_prompt_failed"), MAYBE_SENT),
+    (HerdrError("timeout", "agent prompt", None), MAYBE_SENT),
+]
 
 
 @contextmanager

@@ -5,11 +5,16 @@ from conftest import (
     EXPECTED_SUMMARIES,
     INITIALIZE_REQUEST,
     LIST_AGENTS_CALL,
+    MESSAGE,
+    PROMPT_FAILURE_SENTENCES,
     SCREEN_TEXT,
+    SEND_MESSAGE_REFUSALS,
     SNAPSHOT_ARGS,
     TRIMMED_SCREEN,
     failed_with,
     mcp_session,
+    orchestrator_snapshot,
+    prompt_args,
     screen_read_args,
     succeeded,
     tool_call,
@@ -147,3 +152,73 @@ def test_get_agent_activity_rejects_an_option_shaped_target(fake_runner):
         True,
         [{"type": "text", "text": "That is not an agent name or pane id."}],
     )
+
+
+@pytest.mark.parametrize(
+    ("agent", "text", "snapshot_changes", "expected_calls", "sentence"), SEND_MESSAGE_REFUSALS
+)
+def test_send_message_refuses_without_prompting(
+    snapshot_json, fake_runner, caplog, agent, text, snapshot_changes, expected_calls, sentence
+):
+    caplog.set_level(logging.INFO, logger="herdr_mcp")
+    snapshot = orchestrator_snapshot(snapshot_json, **snapshot_changes)
+    runner = fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)})
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": agent, "text": text})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert (result["isError"], result["content"]) == (True, [{"type": "text", "text": sentence}])
+    assert runner.calls == expected_calls
+    records = [record for record in caplog.records if record.getMessage() == "tool call"]
+    assert [(record.tool, record.outcome) for record in records] == [("send_message", "error")]
+
+
+@pytest.mark.parametrize(("prompt_result", "sentence"), PROMPT_FAILURE_SENTENCES)
+def test_send_message_speaks_each_prompt_failure(
+    snapshot_json, fake_runner, prompt_result, sentence
+):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
+            prompt_args("alpha", MESSAGE): prompt_result,
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": "alpha", "text": MESSAGE})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert (result["isError"], result["content"]) == (True, [{"type": "text", "text": sentence}])
+
+
+@pytest.mark.parametrize("status", ["idle", "done"])
+def test_send_message_prompts_a_ready_orchestrator(snapshot_json, fake_runner, caplog, status):
+    caplog.set_level(logging.INFO, logger="herdr_mcp")
+    text = "-x run the tests"
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json, status=status)),
+            prompt_args("alpha", text): RunResult(0, "", ""),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": "alpha", "text": text})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert result["structuredContent"] == {"target": "alpha", "sent": True}
+    assert runner.calls == [SNAPSHOT_ARGS, prompt_args("alpha", text)]
+    records = [record for record in caplog.records if record.getMessage() == "tool call"]
+    assert [(record.tool, record.outcome) for record in records] == [("send_message", "ok")]
+
+
+def test_send_message_rejects_a_text_over_2000_characters(fake_runner):
+    runner = fake_runner({})
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": "alpha", "text": "x" * 2001})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert result["isError"] is True
+    assert runner.calls == []
