@@ -1,0 +1,10 @@
+services:
+  herdr-mcp:
+    image: ghcr.io/dexpetkovic/herdr-mcp:latest
+    # The uid and gid own herdr's socket on the host.
+    user: "2001:2001"
+    volumes:
+      - /home/agent/.config/herdr:/herdr:ro
+    environment:
+      HERDR_MCP_TOKEN: ${HERDR_MCP_TOKEN:?}
+      HERDR_MCP_PUBLIC_HOST: ${HERDR_MCP_PUBLIC_HOST:?}
