@@ -116,6 +116,13 @@ def snapshot_herdr(snapshot_json, fake_runner) -> Herdr:
     return Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
 
 
+@pytest.fixture(params=["herdr_error", "unexpected_exception"])
+def failing_herdr(request, fake_runner) -> Herdr:
+    if request.param == "herdr_error":
+        return Herdr("herdr", fake_runner({SNAPSHOT_ARGS: failed_with("server_not_running")}))
+    return Herdr("herdr", fake_runner({}))
+
+
 @pytest.fixture
 def auth_client() -> TestClient:
     stub = Starlette(routes=[Route("/mcp", lambda request: PlainTextResponse("ok"))])
