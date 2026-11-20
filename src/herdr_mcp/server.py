@@ -59,14 +59,16 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
     def list_agents() -> Annotated[CallToolResult, AgentList]:
         """List herdr agents with their target, kind, status and workspace."""
         started = time.monotonic()
+        outcome = "error"
         try:
-            records = herdr.snapshot()
+            result = AgentList(agents=summarise_agents(herdr.snapshot()))
+            outcome = "ok"
+            return result
         except HerdrError as error:
             _log_herdr_error(error)
-            _log_tool_call("list_agents", "error", started)
             return _spoken_error(error)
-        _log_tool_call("list_agents", "ok", started)
-        return AgentList(agents=summarise_agents(records))
+        finally:
+            _log_tool_call("list_agents", outcome, started)
 
     app: ASGIApp = server.streamable_http_app(
         json_response=True, transport_security=_transport_security(settings.public_host)

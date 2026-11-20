@@ -1,5 +1,6 @@
 import logging
 
+import pytest
 from conftest import (
     EXPECTED_SUMMARIES,
     INITIALIZE_REQUEST,
@@ -75,9 +76,14 @@ def test_list_agents_logs_one_tool_call(snapshot_herdr, caplog):
     assert records[0].duration_ms >= 0
 
 
-def test_failing_list_agents_logs_an_error_outcome(fake_runner, caplog):
+@pytest.mark.parametrize(
+    "runner_results",
+    [{SNAPSHOT_ARGS: failed_with("server_not_running")}, {}],
+    ids=["herdr_error", "unexpected_exception"],
+)
+def test_failing_list_agents_logs_an_error_outcome(fake_runner, caplog, runner_results):
     caplog.set_level(logging.INFO, logger="herdr_mcp")
-    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: failed_with("server_not_running")}))
+    herdr = Herdr("herdr", fake_runner(runner_results))
     with mcp_session(herdr) as (client, headers):
         client.post("/mcp", headers=headers, json=LIST_AGENTS_CALL)
 
