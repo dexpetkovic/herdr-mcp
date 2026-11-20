@@ -50,8 +50,9 @@ Change the uid, gid and mount source in the compose file when herdr runs as anot
 
 ## On any other Linux server
 
-Build the image from `Dockerfile` and run it next to herdr. Run the commands as the user that runs
-herdr, in a shell that holds `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST`.
+Build the image from `Dockerfile` and run it next to herdr. herdr publishes Linux binaries for
+`x86_64` and `aarch64`, so the image builds on those two architectures. Run the commands as the
+user that runs herdr, in a shell that holds `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST`.
 
 ```sh
 docker build -t herdr-mcp .
@@ -72,8 +73,11 @@ The image pins the herdr CLI with the build argument `HERDR_VERSION`. After ever
 the host, change its default in `Dockerfile` to the new version. On Coolify, pushing that change to
 `main` rebuilds and redeploys the image.
 
-On any other Linux server, run `docker rm -f herdr-mcp` after the rebuild. Then start the container
-again with the `docker run` command above.
+On any other Linux server, rebuild the image with `docker build -t herdr-mcp .`. Remove the old
+container with `docker rm -f herdr-mcp`. Then start it again with the `docker run` command above.
 
-Find the container's name with `docker ps --filter name=herdr-mcp`. Check the versions with
-`docker exec <container name> herdr status`.
+Check the versions on either setup with this command.
+
+```sh
+docker exec "$(docker ps -q --filter name=herdr-mcp)" herdr status
+```
