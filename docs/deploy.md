@@ -77,9 +77,9 @@ Create the resource with these steps.
 1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
    and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
    `.config/herdr` directory as an absolute path. Push the change to `main`.
-2. Choose the webhook option in [Expose it through one public
+2. Set up the HTTPS dashboard hostname in [Expose it through one public
    path](#expose-it-through-one-public-path) first, because the GitHub App records its webhook URL
-   when you create it. Create a GitHub App source in Coolify with [Coolify's GitHub App
+   when you create it. Then create a GitHub App source in Coolify with [Coolify's GitHub App
    guide](https://coolify.io/docs/applications/sources/github/app). Give it access to your copy of
    the repository.
 3. Add a new resource from the GitHub App source. Pick your copy of the repository and select the
@@ -145,9 +145,9 @@ one public path](#expose-it-through-one-public-path).
 Grok's custom connectors call herdr-mcp from xAI's servers. herdr-mcp therefore needs a public HTTPS
 URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 
-The recommended path has three hops. The proxied DNS record resolves to Cloudflare, and Cloudflare
-forwards each request to the origin. A reverse proxy on the server, such as Coolify's Traefik, forwards
-it to the herdr-mcp container, which answers it.
+The recommended path has three hops. The proxied DNS record resolves to Cloudflare. Cloudflare
+forwards each request to the origin. A reverse proxy on the server, such as Coolify's Traefik,
+forwards it to the herdr-mcp container. The container answers it.
 
 The public path must meet three requirements. Each vendor's own guide gives the steps.
 
@@ -173,8 +173,9 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
    **Flexible** mode loops on Coolify's HTTPS redirect.
 
-Keep an administrator path open. Add rules that allow SSH and Coolify's dashboard port, 8000 by
-default, from your own address or a private network such as Tailscale. Apply the firewall. Then open
+Keep an administrator path open. Add a rule that allows SSH from your own address or a private
+network such as Tailscale. On Coolify, add the same rule for the dashboard port, 8000 by default.
+Apply the firewall. Then open
 a fresh SSH session and reload the dashboard to confirm that both still work.
 
 Check requirement 1 before you publish the DNS record. Open every firewall that applies to the
@@ -182,22 +183,24 @@ server in the provider's console. Hetzner combines the allow rules of all attach
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
-The firewall also blocks GitHub's webhook deliveries to Coolify on the same server. Choose how
-GitHub reaches Coolify before you create the GitHub App, because the app records its webhook URL
-when you create it.
+On Coolify, the firewall also blocks GitHub's webhook deliveries to the dashboard port. GitHub
+reaches Coolify through Cloudflare over HTTPS instead. Set this up before you create the GitHub App,
+because the app records its webhook URL when you create it.
 
-1. Serve Coolify's dashboard on a Cloudflare-proxied HTTPS hostname on port 443, such as
-   `coolify.example.com`. Set that `https://` address as **URL** in Coolify's [instance
-   settings](https://coolify.io/docs/core/instance-management/instance-settings). When you create
-   the GitHub App, choose **Use a custom endpoint** and enter that HTTPS base URL. Cloudflare's
-   proxy does not forward port 8000.
-2. As the alternative, allow GitHub's webhook IP ranges on Coolify's port, 8000 by default.
-   GitHub's `meta` API on `api.github.com` lists them under `hooks`. This option sends webhooks
-   over plain HTTP. GitHub signs each payload with the webhook secret, but the payload travels
-   unencrypted. The first deployment's firewall uses this option.
+1. Choose a dashboard hostname, such as `coolify.example.com`. Point a proxied Cloudflare DNS record
+   for it at the server.
+2. Install a certificate for the dashboard hostname on Traefik, as requirement 2 describes for the
+   MCP hostname. Set **Full (strict)** for the dashboard hostname, as requirement 3 describes.
+   [Coolify's Cloudflare guide](https://coolify.io/docs/integrations/security/cloudflare/ddos-protection)
+   covers the dashboard setup.
+3. Set `https://coolify.example.com` as **URL** in Coolify's [instance
+   settings](https://coolify.io/docs/core/instance-management/instance-settings).
+4. Open `https://coolify.example.com` in a browser. The dashboard must load over HTTPS.
+5. When you create the GitHub App, choose **Use a custom endpoint**. Enter
+   `https://coolify.example.com` as the base URL. Cloudflare's proxy does not forward port 8000.
 
-With option 2, Coolify's webhook URL must resolve to an address GitHub can reach. A hostname that
-points at a private VPN address breaks deploy on push. Coolify step 12 confirms a delivery
+The first deployment allowed GitHub's webhook IP ranges on port 8000 instead. That path sends
+payloads over plain HTTP, so this guide does not use it. Coolify step 12 confirms a delivery
 afterwards.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
@@ -215,8 +218,11 @@ openssl s_client -connect 127.0.0.1:443 -servername mcp.example.com </dev/null 2
 
 The output must meet three conditions. The issuer names Cloudflare's Origin CA when you use an
 Origin CA certificate. The current UTC time falls between the `notBefore` and `notAfter` dates.
-The last line reads `Hostname
-mcp.example.com does match certificate`.
+The last line reads as follows.
+
+```text
+Hostname mcp.example.com does match certificate
+```
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
 the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
@@ -267,7 +273,7 @@ car has no recorded test yet.
 On 2026-11-20, at least 15 public repositories shared the name herdr-mcp. This project is the
 repository `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
 `get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
-the client to answer from this live server. Whether Grok follows them is not yet verified.
+the client to answer from this live server. I have yet to verify whether Grok follows those instructions.
 
 ## Troubleshooting
 
