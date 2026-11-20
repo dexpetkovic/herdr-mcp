@@ -94,7 +94,8 @@ Create the resource with these steps.
    Variables**. Coolify refuses to deploy while either is empty.
 10. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
     firewall, the certificate and the DNS record.
-11. Deploy.
+11. Deploy. Then run the origin certificate check at the end of [Expose it through one public
+    path](#expose-it-through-one-public-path).
 12. Push any commit to `main`. Check that GitHub shows a successful webhook delivery and that
     Coolify starts a new deployment.
 
@@ -156,11 +157,13 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
    accepts. The first deployment used a Cloudflare Origin CA certificate. Create one with
    [Cloudflare's Origin CA guide](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/),
-   and skip that guide's step for the SSL/TLS mode. Install it on Coolify's Traefik with [Coolify's
-   custom certificate guide](https://coolify.io/docs/core/networking/proxy/traefik/custom-ssl-certs).
-   Do that guide's file and Dynamic Configuration steps before you publish the DNS record. Its
-   verification step needs the public hostname, so run the origin check below after the deploy
-   instead.
+   and skip that guide's step for the SSL/TLS mode. On Coolify, install it on Traefik with
+   [Coolify's custom certificate
+   guide](https://coolify.io/docs/core/networking/proxy/traefik/custom-ssl-certs). Do that guide's
+   file and Dynamic Configuration steps before you publish the DNS record. Its verification step
+   needs the public hostname, so run the origin check below after the deploy instead. With any
+   other reverse proxy, load the certificate for the hostname as that proxy's documentation
+   describes.
 3. Cloudflare's encryption mode for the hostname is **Full (strict)**. When other hostnames share
    the zone, set it for this hostname alone with a [Configuration
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
@@ -171,31 +174,22 @@ server in the provider's console. Hetzner combines the allow rules of all attach
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
-Then test each public address from a network outside Cloudflare while the proxy runs. The test
-needs a netcat that supports `-z` and a network with a route to the address's IP family. Set
-`SERVER_IP` to one address, such as `203.0.113.10`. Each connection must be refused or time out,
-which prints `closed`. If `nc` prints an error, fix the command or the network before you read the
-result.
-
-```sh
-SERVER_IP=203.0.113.10
-for port in 80 443; do
-  if nc -z -w 5 "$SERVER_IP" "$port"; then echo "$port open"; else echo "$port closed"; fi
-done
-```
-
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
 describes.
 
 After the deploy, check the origin certificate on the server itself. A check through the public
-hostname shows Cloudflare's edge certificate instead. The issuer must name Cloudflare's Origin CA
-when you use an Origin CA certificate.
+hostname shows Cloudflare's edge certificate instead. Replace `127.0.0.1` with the proxy's listen
+address when the proxy binds one interface only.
 
 ```sh
 openssl s_client -connect 127.0.0.1:443 -servername mcp.example.com </dev/null 2>/dev/null \
-  | openssl x509 -noout -issuer -subject
+  | openssl x509 -noout -issuer -ext subjectAltName -dates -checkhost mcp.example.com
 ```
+
+The output must meet three conditions. The issuer names Cloudflare's Origin CA when you use an
+Origin CA certificate. The `notAfter` date lies in the future. The last line reads `Hostname
+mcp.example.com does match certificate`.
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
 the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
