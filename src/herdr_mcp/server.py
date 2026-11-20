@@ -25,6 +25,7 @@ MAX_TARGET_LENGTH = 64
 MAX_SCREEN_CHARACTERS = 4000
 MAX_MESSAGE_CHARACTERS = 2000
 AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 READY_STATUSES = frozenset({"idle", "done"})
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
@@ -164,7 +165,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
                 )
             if not AGENT_NAME.fullmatch(agent):
                 return _error_result("That is not a valid agent name.")
-            if "\0" in text:
+            if CONTROL_CHARACTER.search(text):
                 return _error_result("The message contains a character I cannot send.")
             try:
                 records = herdr.snapshot()

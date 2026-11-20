@@ -97,8 +97,6 @@ def prompt_args(name: str, text: str) -> tuple[str, ...]:
 
 
 class FakeRunner:
-    """Answers each herdr call from canned results, raising a result that is an exception."""
-
     def __init__(self, results: dict[tuple[str, ...], RunResult | Exception]) -> None:
         self._results = results
         self.calls: list[tuple[str, ...]] = []
@@ -166,7 +164,7 @@ def orchestrator_snapshot(
     shared_tab: bool = False,
     tab_number: int = 1,
 ) -> dict[str, Any]:
-    """Puts `alpha` in tab `w1:t1` of the main checkout, alone unless `shared_tab` is true."""
+    """Moves the unnamed agent to tab number 3 unless `shared_tab`, so only `alpha`'s tab varies."""
     payload = copy.deepcopy(snapshot_json)
     snapshot = payload["result"]["snapshot"]
     snapshot["agents"][0]["agent_status"] = status
@@ -189,6 +187,7 @@ def failed_with(code: str) -> RunResult:
 
 
 MESSAGE = "run the tests"
+UNSENDABLE_CHARACTER = "The message contains a character I cannot send."
 NOT_ORCHESTRATOR = "I can only send messages to an orchestrator agent."
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
@@ -201,7 +200,9 @@ SEND_MESSAGE_REFUSALS = [
         "Name the agent instead of its pane. You can name it with herdr agent rename.",
     ),
     ("Alpha!", MESSAGE, {}, [], "That is not a valid agent name."),
-    ("alpha", "run\0 the tests", {}, [], "The message contains a character I cannot send."),
+    ("alpha", "run\0 the tests", {}, [], UNSENDABLE_CHARACTER),
+    ("alpha", "run the tests\nnow", {}, [], UNSENDABLE_CHARACTER),
+    ("alpha", "run\x1b[201~ the tests", {}, [], UNSENDABLE_CHARACTER),
     ("delta", MESSAGE, {}, [SNAPSHOT_ARGS], "No agent named delta is running."),
     (
         "alpha",
