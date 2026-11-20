@@ -1,6 +1,8 @@
 services:
   herdr-mcp:
     build: .
+    expose:
+      - "8765"
     # herdr's socket is mode 0600, so the container runs as the socket owner's uid.
     user: "2001:2001"
     volumes:
