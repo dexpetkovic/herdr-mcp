@@ -18,7 +18,9 @@ that hostname everywhere below. Each path needs its own tools.
 
 - On a Mac, you need `uv` and a herdr CLI of the same version as the running herdr server.
 - On Coolify, you need a Coolify server whose webhook endpoint GitHub can reach, a Cloudflare zone
-  and a copy of the repository that you can push to in your own GitHub account.
+  and a copy of the repository that you can push to in your own GitHub account. The certificate
+  install needs root on the server, so arrange that step with the server's administrator if you
+  lack it.
 - On any other Linux server, you need a local Docker daemon and permission to run `docker` as the
   user that runs herdr.
 
@@ -141,8 +143,8 @@ one public path](#expose-it-through-one-public-path).
 Grok's custom connectors call herdr-mcp from xAI's servers. herdr-mcp therefore needs a public HTTPS
 URL that ends in `/mcp`, such as `https://mcp.example.com/mcp`.
 
-The recommended path has three hops. Cloudflare's proxy receives the request, and a proxied DNS
-record sends the hostname there. A reverse proxy on the server, such as Coolify's Traefik, forwards
+The recommended path has three hops. The proxied DNS record resolves to Cloudflare, and Cloudflare
+forwards each request to the origin. A reverse proxy on the server, such as Coolify's Traefik, forwards
 it. The herdr-mcp container answers it.
 
 The public path must meet three requirements. Each vendor's own guide gives the steps.
@@ -173,6 +175,10 @@ Check requirement 1 before you publish the DNS record. Open every firewall that 
 server in the provider's console. Hetzner combines the allow rules of all attached firewalls, as its
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
+
+The firewall also blocks GitHub's webhook deliveries to a Coolify endpoint on the same server.
+Before you restrict it, route that endpoint through Cloudflare. Coolify step 12 confirms a delivery
+afterwards.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
