@@ -176,9 +176,15 @@ server in the provider's console. Hetzner combines the allow rules of all attach
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
-The firewall also blocks GitHub's webhook deliveries to a Coolify endpoint on the same server.
-Before you restrict it, route that endpoint through Cloudflare. Coolify step 12 confirms a delivery
-afterwards.
+The firewall also blocks GitHub's webhook deliveries to Coolify on the same server. Keep them
+working with one of two options before you restrict it.
+
+1. Allow GitHub's webhook IP ranges on Coolify's port, 8000 by default. GitHub's `meta` API on
+   `api.github.com` lists them under `hooks`. The first deployment's firewall does this.
+2. Route Coolify's webhook endpoint through Cloudflare.
+
+Coolify's webhook URL must resolve to an address GitHub can reach. A hostname that points at a
+private VPN address breaks deploy on push. Coolify step 12 confirms a delivery afterwards.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
