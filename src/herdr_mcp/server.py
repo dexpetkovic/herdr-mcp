@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Annotated
 
 import uvicorn
@@ -19,6 +20,13 @@ logger = logging.getLogger("herdr_mcp")
 
 LOOPBACK_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 LOOPBACK_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+
+SERVER_INSTRUCTIONS = (
+    "This server reports the user's own herdr coding agents, live from the user's server. "
+    "Call list_agents to learn what the agents are doing and which ones need attention. "
+    "Keep answers short enough to speak aloud. "
+    "Answer from these tools and do not search the web for herdr-mcp."
+)
 
 
 class AgentSummary(BaseModel):
@@ -45,16 +53,19 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
 
 
 def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
-    server = MCPServer(name="herdr")
+    server = MCPServer(name="herdr", instructions=SERVER_INSTRUCTIONS)
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     def list_agents() -> Annotated[CallToolResult, AgentList]:
         """List herdr agents with their target, kind, status and workspace."""
+        started = time.monotonic()
         try:
             records = herdr.snapshot()
         except HerdrError as error:
             _log_herdr_error(error)
+            _log_tool_call("list_agents", "error", started)
             return _spoken_error(error)
+        _log_tool_call("list_agents", "ok", started)
         return AgentList(agents=summarise_agents(records))
 
     app: ASGIApp = server.streamable_http_app(
@@ -86,6 +97,11 @@ def _log_herdr_error(error: HerdrError) -> None:
             "herdr_cause": repr(error.__cause__) if error.__cause__ is not None else None,
         },
     )
+
+
+def _log_tool_call(tool: str, outcome: str, started: float) -> None:
+    duration_ms = int((time.monotonic() - started) * 1000)
+    logger.info("tool call", extra={"tool": tool, "outcome": outcome, "duration_ms": duration_ms})
 
 
 def _spoken_error(error: HerdrError) -> CallToolResult:

@@ -1,5 +1,8 @@
+import logging
+
 from conftest import (
     EXPECTED_SUMMARIES,
+    INITIALIZE_REQUEST,
     LIST_AGENTS_CALL,
     SNAPSHOT_ARGS,
     failed_with,
@@ -8,7 +11,7 @@ from conftest import (
 )
 
 from herdr_mcp.herdr import Herdr
-from herdr_mcp.server import AgentSummary, summarise_agents
+from herdr_mcp.server import SERVER_INSTRUCTIONS, AgentSummary, summarise_agents
 
 
 def test_list_agents_over_streamable_http_returns_json(snapshot_herdr):
@@ -51,3 +54,32 @@ def test_summary_without_kind_says_unknown(snapshot_json, fake_runner):
     herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
 
     assert summarise_agents(herdr.snapshot())[0].kind == "unknown"
+
+
+def test_initialize_returns_server_instructions(snapshot_herdr):
+    with mcp_session(snapshot_herdr) as (client, headers):
+        del headers["Mcp-Session-Id"]
+        result = client.post("/mcp", headers=headers, json=INITIALIZE_REQUEST).json()["result"]
+
+    assert result["instructions"] == SERVER_INSTRUCTIONS
+
+
+def test_list_agents_logs_one_tool_call(snapshot_herdr, caplog):
+    caplog.set_level(logging.INFO, logger="herdr_mcp")
+    with mcp_session(snapshot_herdr) as (client, headers):
+        client.post("/mcp", headers=headers, json=LIST_AGENTS_CALL)
+
+    records = [record for record in caplog.records if record.getMessage() == "tool call"]
+    assert [(record.tool, record.outcome) for record in records] == [("list_agents", "ok")]
+    assert isinstance(records[0].duration_ms, int)
+    assert records[0].duration_ms >= 0
+
+
+def test_failing_list_agents_logs_an_error_outcome(fake_runner, caplog):
+    caplog.set_level(logging.INFO, logger="herdr_mcp")
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: failed_with("server_not_running")}))
+    with mcp_session(herdr) as (client, headers):
+        client.post("/mcp", headers=headers, json=LIST_AGENTS_CALL)
+
+    records = [record for record in caplog.records if record.getMessage() == "tool call"]
+    assert [(record.tool, record.outcome) for record in records] == [("list_agents", "error")]
