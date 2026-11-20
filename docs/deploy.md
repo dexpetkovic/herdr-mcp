@@ -1,8 +1,7 @@
 # Deploying herdr-mcp
 
 herdr-mcp must run on the machine where the herdr server runs. It reaches herdr through herdr's Unix
-socket. The herdr CLI that herdr-mcp calls must have the same version as the herdr server. Run
-`herdr status` and compare the client and server versions it prints.
+socket. The herdr CLI in the image must have the same version as the herdr server on the host.
 
 Every setting comes from an environment variable. `HERDR_MCP_TOKEN` is required in every setup.
 Generate one and keep it in the shell.
@@ -69,19 +68,12 @@ Put an HTTPS reverse proxy in front of `127.0.0.1:8765` for the public hostname.
 
 ## Upgrading herdr
 
-The image pins the herdr CLI with the build argument `HERDR_VERSION`. After every herdr upgrade on
-the host, change its default in `Dockerfile` to the new version. On Coolify, pushing that change to
-`main` rebuilds and redeploys the image.
+The image pins the herdr CLI with the build argument `HERDR_VERSION`. Its default in `Dockerfile`
+must equal the version that `herdr --version` prints on the host. After every herdr upgrade on the
+host, change that default to the new version.
+
+On Coolify, pushing that change to `main` rebuilds and redeploys the image. The resource's
+**Terminal** page in Coolify can also run `herdr status` inside the container.
 
 On any other Linux server, rebuild the image with `docker build -t herdr-mcp .`. Remove the old
 container with `docker rm -f herdr-mcp`. Then start it again with the `docker run` command above.
-
-Check the versions after the upgrade. On any other Linux server the container is `herdr-mcp`. On
-Coolify, `docker ps --filter name=herdr-mcp` lists the container names. A preview container's name
-contains `-pr-`, and the production container's name does not. Set `CONTAINER` to the production
-name on Coolify.
-
-```sh
-CONTAINER=herdr-mcp
-docker exec "$CONTAINER" herdr status
-```
