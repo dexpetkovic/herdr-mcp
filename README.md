@@ -43,8 +43,8 @@ container, how to expose it through one public path and how to connect Grok.
 `contrib/herdr-mcp.service` keeps herdr-mcp running on a Linux host without Docker. Run these steps
 as the user that runs herdr.
 
-1. Install herdr-mcp as [Install](#install) shows. The unit starts `~/.local/bin/herdr-mcp`. When
-   `uv tool dir --bin` prints another directory, change `ExecStart` in your copy of the unit to match.
+1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run the later steps in that
+   checkout.
 2. Create the environment file with mode 0600. The commands keep an existing file and fix its mode.
 
    ```sh
@@ -53,24 +53,30 @@ as the user that runs herdr.
    chmod 600 ~/.config/herdr-mcp/env
    ```
 
-   Edit the file. It holds one `KEY=value` line per setting. Generate the token with the command at
-   the top of [docs/deploy.md](docs/deploy.md).
+   Edit the file. It holds one `KEY=value` line per setting. Replace `<token>` with a token from
+   the command at the top of [docs/deploy.md](docs/deploy.md).
 
-   ```sh
+   ```text
    HERDR_MCP_TOKEN=<token>
    HERDR_MCP_HOST=127.0.0.1
    HERDR_MCP_PORT=8765
    ```
 
-   The host and port lines keep the listener on loopback, whatever the user manager's environment
-   holds. Add `HERDR_BIN=<path to herdr>` when herdr is not in `~/.local/bin` or `/usr/local/bin`.
+   The host line keeps the listener on the loopback interface, whatever the user manager's
+   environment holds. The port line fixes the port. Add `HERDR_BIN=<path to herdr>` when herdr is not in `~/.local/bin` or `/usr/local/bin`.
    Add `HERDR_SESSION=<name>` to report a herdr session other than the default. The unit clears
    `HERDR_SOCKET_PATH`, so `HERDR_SESSION` takes effect.
-3. Install and start the unit.
+3. Copy the unit.
 
    ```sh
    mkdir -p ~/.config/systemd/user
    cp contrib/herdr-mcp.service ~/.config/systemd/user/
+   ```
+
+   The unit starts `~/.local/bin/herdr-mcp`. When `uv tool dir --bin` prints another directory,
+   change `ExecStart` in `~/.config/systemd/user/herdr-mcp.service` to match. Then start the unit.
+
+   ```sh
    systemctl --user daemon-reload
    systemctl --user enable --now herdr-mcp
    ```
@@ -79,8 +85,8 @@ as the user that runs herdr.
 5. Read `journalctl --user -u herdr-mcp` when the service is not active or a request fails. systemd
    logs a missing environment file or executable there. herdr-mcp logs a line there that names an
    invalid setting.
-6. The service listens on `127.0.0.1:8765` for clients on the same host. The guide documents the
-   public path for the container, in [Expose it through one public
+6. Connect a client on the same host to `http://127.0.0.1:8765/mcp` with the header
+   `Authorization: Bearer <token>`. The guide documents the public path for the container, in [Expose it through one public
    path](docs/deploy.md#expose-it-through-one-public-path).
 
 ## Privacy
@@ -98,7 +104,7 @@ check just before sending.
 - The orchestrator can start working between that check and the delivery.
 - The agent can move to another tab or workspace, or lose its name to a new agent, before herdr
   delivers the message.
-- The read-back depends on the client. herdr-mcp cannot check that the client read the message back.
+- The client is responsible for reading the message back and waiting for your yes.
 
 ## License
 
