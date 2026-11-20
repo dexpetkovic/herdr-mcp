@@ -1,5 +1,13 @@
 import pytest
-from conftest import EXPECTED_RECORDS, SNAPSHOT_ARGS, UNREADABLE_STDERR, failed_with, succeeded
+from conftest import (
+    EXPECTED_RECORDS,
+    READ_ALPHA_ARGS,
+    SCREEN_TEXT,
+    SNAPSHOT_ARGS,
+    UNREADABLE_STDERR,
+    failed_with,
+    succeeded,
+)
 
 from herdr_mcp.herdr import Herdr, HerdrError, RunResult, subprocess_runner
 
@@ -127,3 +135,9 @@ def test_null_kind_and_name_are_empty(snapshot_json, fake_runner):
     record = herdr.snapshot()[0]
 
     assert (record.kind, record.name) == (None, None)
+
+
+def test_read_screen_returns_the_visible_screen_unchanged(fake_runner):
+    herdr = Herdr("herdr", fake_runner({READ_ALPHA_ARGS: RunResult(0, SCREEN_TEXT, "")}))
+
+    assert herdr.read_screen("alpha") == SCREEN_TEXT

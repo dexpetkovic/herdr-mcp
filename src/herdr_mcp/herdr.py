@@ -77,6 +77,9 @@ class Herdr:
             raise HerdrError("unexpected_output", command, 0, field) from None
         return _agent_records(snapshot)
 
+    def read_screen(self, target: str) -> str:
+        return self._query(["agent", "read", target, "--source", "visible"])
+
     def _query(self, args: list[str]) -> str:
         command = " ".join(args)
         result = self._run([self._binary, *args], timeout=TIMEOUT_SECONDS)
