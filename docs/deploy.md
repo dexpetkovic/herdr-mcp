@@ -77,8 +77,8 @@ Create the resource with these steps.
 1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
    and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
    `.config/herdr` directory as an absolute path. Push the change to `main`.
-2. Set up the HTTPS dashboard hostname in [Expose it through one public
-   path](#expose-it-through-one-public-path) first, because the GitHub App records its webhook URL
+2. Set up the HTTPS dashboard hostname in [Coolify webhook over
+   HTTPS](#coolify-webhook-over-https) first, because the GitHub App records its webhook URL
    when you create it. Then create a GitHub App source in Coolify with [Coolify's GitHub App
    guide](https://coolify.io/docs/applications/sources/github/app). Give it access to your copy of
    the repository.
@@ -183,25 +183,31 @@ server in the provider's console. Hetzner combines the allow rules of all attach
 [firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
 accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
 
+### Coolify webhook over HTTPS
+
 On Coolify, the firewall also blocks GitHub's webhook deliveries to the dashboard port. GitHub
-reaches Coolify through Cloudflare over HTTPS instead. Set this up before you create the GitHub App,
+reaches Coolify through Cloudflare over HTTPS instead. This route makes the dashboard's login page
+publicly reachable through Cloudflare. Set this up before you create the GitHub App,
 because the app records its webhook URL when you create it.
 
 1. Choose a dashboard hostname, such as `coolify.example.com`. Point a proxied Cloudflare DNS record
    for it at the server.
-2. Install a certificate for the dashboard hostname on Traefik, as requirement 2 describes for the
+2. Open **Servers > localhost > Proxy** in Coolify. A fresh install has no running proxy. Select
+   Traefik and click **Start Proxy** if the proxy is stopped.
+3. Install a certificate for the dashboard hostname on Traefik, as requirement 2 describes for the
    MCP hostname. Set **Full (strict)** for the dashboard hostname, as requirement 3 describes.
    [Coolify's Cloudflare guide](https://coolify.io/docs/integrations/security/cloudflare/ddos-protection)
    covers the dashboard setup.
-3. Set `https://coolify.example.com` as **URL** in Coolify's [instance
+4. Set `https://coolify.example.com` as **URL** in Coolify's [instance
    settings](https://coolify.io/docs/core/instance-management/instance-settings).
-4. Open `https://coolify.example.com` in a browser. The dashboard must load over HTTPS.
-5. When you create the GitHub App, choose **Use a custom endpoint**. Enter
+5. Open `https://coolify.example.com` in a browser. The dashboard must load over HTTPS.
+6. When you create the GitHub App, choose **Use a custom endpoint**. Enter
    `https://coolify.example.com` as the base URL. Cloudflare's proxy does not forward port 8000.
 
 The first deployment allowed GitHub's webhook IP ranges on port 8000 instead. That path sends
 payloads over plain HTTP, so this guide does not use it. Coolify step 12 confirms a delivery
-afterwards.
+afterwards. A Cloudflare Access policy on the dashboard hostname must let the GitHub App's webhook
+through.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
