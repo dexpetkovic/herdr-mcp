@@ -69,8 +69,11 @@ Put an HTTPS reverse proxy in front of `127.0.0.1:8765` for the public hostname.
 ## Upgrading herdr
 
 The image pins the herdr CLI with the build argument `HERDR_VERSION`. Its default in `Dockerfile`
-must equal the version that `herdr --version` prints on the host. After every herdr upgrade on the
-host, change that default to the new version.
+must equal the version of the running herdr server. Run `herdr status` on the host as the user that
+runs herdr. Set the default to the `version` it prints under `server:`.
+
+An updated herdr binary leaves a running server on its old version until herdr restarts. Change the
+default only after `herdr status` reports the new server version.
 
 On Coolify, pushing that change to `main` rebuilds and redeploys the image. The resource's
 **Terminal** page in Coolify can also run `herdr status` inside the container.
