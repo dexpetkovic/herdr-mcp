@@ -22,8 +22,8 @@ that hostname everywhere below. Each path needs its own tools.
 - On any other Linux server, you need a local Docker daemon and permission to run `docker` as the
   user that runs herdr.
 
-The herdr CLI talks to the herdr server through a Unix socket, by default `~/.config/herdr/herdr.sock`. A Unix
-socket cannot cross machines, so herdr-mcp runs on the machine that runs the herdr server.
+The herdr CLI talks to the herdr server through a Unix socket, by default
+`~/.config/herdr/herdr.sock`. A Unix socket cannot cross machines.
 
 The socket has mode 0600. herdr-mcp must run as the user that owns the herdr server. Run `id -u` and
 `id -g` as that user to print the uid and gid that a container needs.
@@ -75,7 +75,9 @@ Create the resource with these steps.
 1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
    and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
    `.config/herdr` directory as an absolute path. Push the change to `main`.
-2. Give Coolify's GitHub App access to your copy of the repository.
+2. Create a GitHub App source in Coolify with [Coolify's GitHub App
+   guide](https://coolify.io/docs/applications/sources/github/app). Give it access to your copy of
+   the repository.
 3. Add a new resource from the GitHub App source. Pick your copy of the repository and select the
    `main` branch.
 4. Select the Docker Compose build pack. The Dockerfile build pack ignores the compose file's `user`
@@ -116,9 +118,10 @@ docker run -d --name herdr-mcp --restart unless-stopped \
 
 Run the HTTPS reverse proxy on the host, and forward the public hostname to `127.0.0.1:8765`.
 
-A reverse proxy in its own container network cannot reach the host's `127.0.0.1`. Put both containers on one
-user-defined Docker network, because Docker resolves container names only on such a network. Set
-`PROXY_NETWORK` to the network that the proxy container joins. Replace the `-p` line with this line.
+A reverse proxy in its own container network cannot reach the host's `127.0.0.1`. Put both
+containers on one user-defined Docker network. Docker resolves container names only on such a
+network. Set `PROXY_NETWORK` to the network that the proxy container joins. Replace the `-p` line
+with this line.
 
 ```sh
   --network "$PROXY_NETWORK" \
@@ -147,23 +150,33 @@ The public path must meet three requirements. Each vendor's own guide gives the 
    Firewall](https://docs.hetzner.com/cloud/firewalls/getting-started/creating-a-firewall/).
 2. The reverse proxy presents a certificate for the hostname that [Full
    (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
-   accepts. The first deployment uses a Cloudflare Origin CA certificate on Coolify's Traefik,
-   installed with [Coolify's Origin CA
-   guide](https://coolify.io/docs/knowledge-base/cloudflare/origin-cert).
+   accepts. The first deployment uses a Cloudflare Origin CA certificate. Create it with
+   [Cloudflare's Origin CA guide](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/),
+   and skip that guide's step for the SSL/TLS mode. Install it on Coolify's Traefik with [Coolify's
+   custom certificate guide](https://coolify.io/docs/core/networking/proxy/traefik/custom-ssl-certs).
 3. Cloudflare's encryption mode for the hostname is **Full (strict)**. When other hostnames share
    the zone, set it for this hostname alone with a [Configuration
    Rule](https://developers.cloudflare.com/rules/configuration-rules/settings/#ssl). The
    **Flexible** mode loops on Coolify's HTTPS redirect.
 
-Check requirement 1 from a machine outside Cloudflare before you publish the DNS record. Replace
-`<server-ip>` with the server's public address. The request must time out and print `000`.
+Check requirement 1 before you publish the DNS record. Open every firewall that applies to the
+server in the provider's console. Hetzner combines the allow rules of all attached firewalls, as its
+[firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/) states. Confirm that ports 80 and 443
+accept only Cloudflare's ranges, for every public IPv4 and IPv6 address of the server.
+
+Then test each public address from a network outside Cloudflare while the proxy runs. Set
+`SERVER_IP` to one address, such as `203.0.113.10`. Both ports must print `closed`.
 
 ```sh
-curl -sk --max-time 10 -o /dev/null -w '%{http_code}\n' \
-  --resolve mcp.example.com:443:<server-ip> https://mcp.example.com/mcp
+SERVER_IP=203.0.113.10
+for port in 80 443; do
+  if nc -z -w 5 "$SERVER_IP" "$port"; then echo "$port open"; else echo "$port closed"; fi
+done
 ```
 
-Then point a proxied Cloudflare DNS record for `mcp.example.com` at the server.
+Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
+DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
+describes.
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
 the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
@@ -198,7 +211,8 @@ curl -s -w '\n%{http_code}\n' -X POST https://mcp.example.com/mcp \
 
 Add the connector.
 
-1. Open grok.com/connectors and choose **New Connector**, then **Custom**.
+1. Open [grok.com/connectors](https://grok.com/connectors) and choose **New Connector**, then
+   **Custom**.
 2. Enter `https://mcp.example.com/mcp` as the server URL.
 3. Add the header `Authorization` with the value `Bearer <token>`. `<token>` is the value of
    `HERDR_MCP_TOKEN`.
