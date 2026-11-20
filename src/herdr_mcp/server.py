@@ -143,7 +143,7 @@ def _log_tool_call(tool: str, outcome: str, started: float) -> None:
 
 
 def _is_agent_target(value: str) -> bool:
-    """herdr parses a leading `-` as an option, and `--` cannot protect an agent target."""
+    """herdr reads a flag such as `--help` in the target position, and `--` cannot protect it."""
     return 0 < len(value) <= MAX_TARGET_LENGTH and not value.startswith("-") and "\0" not in value
 
 
