@@ -25,8 +25,10 @@ MAX_TARGET_LENGTH = 64
 MAX_SCREEN_CHARACTERS = 4000
 MAX_MESSAGE_CHARACTERS = 2000
 AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+REVIEWER_NAME = re.compile(r"(?:^|-)rev-")
 CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 READY_STATUSES = frozenset({"idle", "done"})
+REPLY_WAIT_MS = 30000
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
 MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
@@ -36,28 +38,35 @@ STATUS_REFUSALS = {
 }
 PROMPT_FAILURES = {
     "timeout": MAYBE_SENT,
+    "agent_prompt_stalled": MAYBE_SENT,
     "agent_prompt_failed": MAYBE_SENT,
+    "unexpected_output": MAYBE_SENT,
     "agent_blocked": AGENT_BLOCKED,
     "agent_not_ready": "That agent is not ready for a message, so I did not send it.",
 }
 
 SERVER_INSTRUCTIONS = (
-    "This server reports the user's own herdr coding agents, live from the user's server. "
-    "Call list_agents to learn what the agents are doing and which ones need attention. "
-    "list_agents marks the orchestrator agent with orchestrator true. "
-    "Call get_agent_activity with a name or pane id from list_agents "
-    "to read what one agent is doing right now. "
-    "Call send_message to give the user's orchestrator an instruction. "
+    "This server connects the user to their herdr orchestrator agents, live from the user's "
+    "server. "
+    "Call list_agents to find the orchestrators. It lists only orchestrators. "
+    "Send every question or instruction about the agents to an orchestrator with send_message. "
     "Pass the user's words unchanged. Do not read them back or ask the user to confirm. "
-    "To pick the orchestrator, keep the marked agents in the workspace the user named, if any. "
-    "Send only when exactly one remains, its target is a name, and the name does not start "
-    "with rev-. "
-    "A rev- name is a reviewer, so say the layout is wrong and send nothing. "
+    "To pick the orchestrator, keep the rows in the workspace the user named, if any. "
+    "Send only when exactly one remains and its target is a name. "
     "When several remain and the user named no workspace, ask which workspace. "
     "That is the only question you ask. "
     "When several remain in the named workspace, say the orchestrator is ambiguous. "
     "When the one remaining target is a pane id, say the orchestrator has no herdr name. "
-    "When none remains, say the list found no eligible orchestrator. "
+    "When none remains, say the list found no orchestrator. "
+    "send_message waits for the orchestrator's turn to settle and returns its visible screen. "
+    "Summarise screen in a few spoken sentences as what the orchestrator's screen shows. "
+    "When the screen does not show an answer to the user's message, say what it does show. "
+    "When waiting_on_dialog is true, say the orchestrator is waiting on a dialog. "
+    "When sent is true and screen is null, say the message was delivered "
+    "and the screen could not be read. "
+    "When the user later asks for the answer, call get_agent_activity with the same target. "
+    "After an error that says the message may have been sent, or when the send_message call "
+    "itself fails, call get_agent_activity on the same target before any new send. "
     "Keep answers short enough to speak aloud. "
     "Answer from these tools and do not search the web for herdr-mcp."
 )
@@ -68,7 +77,6 @@ class AgentSummary(BaseModel):
     kind: str
     status: str
     workspace: str
-    orchestrator: bool
 
 
 class AgentList(BaseModel):
@@ -83,6 +91,8 @@ class AgentActivity(BaseModel):
 class SentMessage(BaseModel):
     target: str
     sent: bool
+    screen: str | None
+    waiting_on_dialog: bool
 
 
 def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
@@ -92,14 +102,20 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
             kind=record.kind if record.kind is not None else "unknown",
             status=record.status,
             workspace=record.workspace_label if record.workspace_label is not None else "unknown",
-            orchestrator=is_orchestrator_position(record),
         )
         for record in records
+        if is_orchestrator_position(record)
     ]
 
 
 def is_orchestrator_position(record: AgentRecord) -> bool:
-    return record.is_main_checkout is True and record.tab_number == 1 and record.agents_in_tab == 1
+    is_reviewer = record.name is not None and REVIEWER_NAME.search(record.name) is not None
+    return (
+        record.is_main_checkout is True
+        and record.tab_number == 1
+        and record.agents_in_tab == 1
+        and not is_reviewer
+    )
 
 
 def is_orchestrator(record: AgentRecord) -> bool:
@@ -117,7 +133,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     def list_agents() -> Annotated[CallToolResult, AgentList]:
-        """List herdr agents with their target, kind, status, workspace and orchestrator flag."""
+        """List the orchestrator agents with their target, kind, status and workspace."""
         started = time.monotonic()
         outcome = "error"
         try:
@@ -162,8 +178,8 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         agent: str,
         text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
     ) -> Annotated[CallToolResult, SentMessage]:
-        """Send one instruction to the user's orchestrator agent, addressed by its herdr name.
-        Pass the user's words unchanged as `text`."""
+        """Send the user's words unchanged to an orchestrator, addressed by its herdr name.
+        Waits up to 30 seconds for its turn to settle and returns its visible screen."""
         started = time.monotonic()
         outcome = "error"
         try:
@@ -184,7 +200,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             if refusal is not None:
                 return _error_result(refusal)
             try:
-                herdr.prompt(agent, text)
+                settled_status = herdr.prompt(agent, text, REPLY_WAIT_MS)
             except HerdrError as error:
                 _log_herdr_error(error)
                 if error.code == "agent_not_found":
@@ -192,8 +208,18 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
                 if error.code in PROMPT_FAILURES:
                     return _error_result(PROMPT_FAILURES[error.code])
                 return _spoken_error(error)
+            try:
+                screen = trim_screen_text(herdr.read_screen(agent))
+            except HerdrError as error:
+                _log_herdr_error(error)
+                screen = None
             outcome = "ok"
-            return SentMessage(target=agent, sent=True)
+            return SentMessage(
+                target=agent,
+                sent=True,
+                screen=screen,
+                waiting_on_dialog=settled_status == "blocked",
+            )
         finally:
             _log_tool_call("send_message", outcome, started)
 

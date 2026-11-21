@@ -7,6 +7,7 @@ from conftest import (
     UNREADABLE_STDERR,
     failed_with,
     prompt_args,
+    settled_as,
     succeeded,
 )
 
@@ -144,19 +145,36 @@ def test_read_screen_returns_the_visible_screen_unchanged(fake_runner):
     assert herdr.read_screen("alpha") == SCREEN_TEXT
 
 
-def test_prompt_passes_the_name_and_text_as_arguments(fake_runner):
-    runner = fake_runner({prompt_args("alpha", "run the tests"): RunResult(0, "", "")})
+def test_prompt_waits_for_the_turn_and_returns_the_settled_status(fake_runner):
+    runner = fake_runner({prompt_args("alpha", "run the tests"): settled_as("done")})
 
-    Herdr("herdr", runner).prompt("alpha", "run the tests")
+    status = Herdr("herdr", runner).prompt("alpha", "run the tests", 30000)
 
-    assert runner.calls == [prompt_args("alpha", "run the tests")]
+    assert (status, runner.calls, runner.timeouts) == (
+        "done",
+        [prompt_args("alpha", "run the tests")],
+        [35.0],
+    )
+
+
+def test_prompt_without_a_settled_status_is_unexpected_output(fake_runner):
+    runner = fake_runner({prompt_args("alpha", "run the tests"): RunResult(0, "{}", "")})
+
+    with pytest.raises(HerdrError) as raised:
+        Herdr("herdr", runner).prompt("alpha", "run the tests", 30000)
+
+    assert (raised.value.code, raised.value.command, raised.value.field) == (
+        "unexpected_output",
+        "agent prompt",
+        "result",
+    )
 
 
 def test_failed_prompt_names_only_the_operation(fake_runner):
     runner = fake_runner({prompt_args("alpha", "run the tests"): failed_with("agent_blocked")})
 
     with pytest.raises(HerdrError) as raised:
-        Herdr("herdr", runner).prompt("alpha", "run the tests")
+        Herdr("herdr", runner).prompt("alpha", "run the tests", 30000)
 
     assert (raised.value.code, raised.value.command) == ("agent_blocked", "agent prompt")
 

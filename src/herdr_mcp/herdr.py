@@ -3,11 +3,12 @@
 import subprocess
 from collections import Counter
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, ValidationError
 
 TIMEOUT_SECONDS = 10.0
+PROMPT_TIMEOUT_MARGIN_SECONDS = 5.0
 INVALID_SYNTAX_EXIT_CODE = 2
 SNAPSHOT_ARGS = ["api", "snapshot"]
 
@@ -72,25 +73,22 @@ class Herdr:
         self._run = run
 
     def snapshot(self) -> list[AgentRecord]:
-        command = " ".join(SNAPSHOT_ARGS)
         stdout = self._query(SNAPSHOT_ARGS)
-        try:
-            snapshot = _SnapshotResponse.model_validate_json(stdout).result.snapshot
-        except ValidationError as error:
-            location = error.errors()[0]["loc"]
-            field = ".".join(str(part) for part in location) or None
-            raise HerdrError("unexpected_output", command, 0, field) from None
-        return _agent_records(snapshot)
+        response = _validated(_SnapshotResponse, stdout, SNAPSHOT_ARGS)
+        return _agent_records(response.result.snapshot)
 
     def read_screen(self, target: str) -> str:
         return self._query(["agent", "read", target, "--source", "visible"])
 
-    def prompt(self, name: str, text: str) -> None:
-        self._query(["agent", "prompt", name, text])
+    def prompt(self, name: str, text: str, wait_ms: int) -> str:
+        """Waits up to `wait_ms` for the new turn to settle and returns the settled status."""
+        args = ["agent", "prompt", name, text, "--wait", "--timeout", str(wait_ms)]
+        stdout = self._query(args, timeout=wait_ms / 1000 + PROMPT_TIMEOUT_MARGIN_SECONDS)
+        return _validated(_PromptResponse, stdout, args).result.agent.agent_status
 
-    def _query(self, args: list[str]) -> str:
+    def _query(self, args: list[str], timeout: float = TIMEOUT_SECONDS) -> str:
         command = _operation_name(args)
-        result = self._run([self._binary, *args], timeout=TIMEOUT_SECONDS)
+        result = self._run([self._binary, *args], timeout=timeout)
         if result.exit_code == INVALID_SYNTAX_EXIT_CODE:
             raise HerdrError("invalid_syntax", command, result.exit_code)
         if result.exit_code != 0:
@@ -141,6 +139,30 @@ class _SnapshotResult(_WireModel):
 
 class _SnapshotResponse(_WireModel):
     result: _SnapshotResult
+
+
+class _PromptedAgent(_WireModel):
+    agent_status: Literal["idle", "done", "blocked"]
+
+
+class _PromptResult(_WireModel):
+    agent: _PromptedAgent
+
+
+class _PromptResponse(_WireModel):
+    result: _PromptResult
+
+
+WireModel = TypeVar("WireModel", bound=_WireModel)
+
+
+def _validated(model: type[WireModel], stdout: str, args: list[str]) -> WireModel:
+    try:
+        return model.model_validate_json(stdout)
+    except ValidationError as error:
+        location = error.errors()[0]["loc"]
+        field = ".".join(str(part) for part in location) or None
+        raise HerdrError("unexpected_output", _operation_name(args), 0, field) from None
 
 
 def _agent_records(snapshot: _Snapshot) -> list[AgentRecord]:
