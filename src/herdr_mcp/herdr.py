@@ -74,17 +74,17 @@ class Herdr:
 
     def snapshot(self) -> list[AgentRecord]:
         stdout = self._query(SNAPSHOT_ARGS)
-        response = _validated(_SnapshotResponse, stdout, SNAPSHOT_ARGS)
+        response = _validate_response_json(_SnapshotResponse, stdout, SNAPSHOT_ARGS)
         return _agent_records(response.result.snapshot)
 
     def read_screen(self, target: str) -> str:
         return self._query(["agent", "read", target, "--source", "visible"])
 
     def prompt(self, name: str, text: str, wait_ms: int) -> str:
-        """Waits up to `wait_ms` for the new turn to settle and returns the settled status."""
+        """Waits up to `wait_ms` for herdr to report a settled agent status and returns it."""
         args = ["agent", "prompt", name, text, "--wait", "--timeout", str(wait_ms)]
         stdout = self._query(args, timeout=wait_ms / 1000 + PROMPT_TIMEOUT_MARGIN_SECONDS)
-        return _validated(_PromptResponse, stdout, args).result.agent.agent_status
+        return _validate_response_json(_PromptResponse, stdout, args).result.agent.agent_status
 
     def _query(self, args: list[str], timeout: float = TIMEOUT_SECONDS) -> str:
         command = _operation_name(args)
@@ -156,7 +156,7 @@ class _PromptResponse(_WireModel):
 WireModel = TypeVar("WireModel", bound=_WireModel)
 
 
-def _validated(model: type[WireModel], stdout: str, args: list[str]) -> WireModel:
+def _validate_response_json(model: type[WireModel], stdout: str, args: list[str]) -> WireModel:
     try:
         return model.model_validate_json(stdout)
     except ValidationError as error:

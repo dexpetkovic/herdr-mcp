@@ -203,7 +203,7 @@ def settled_as(status: str) -> RunResult:
         "focused": False,
         "revision": 7,
     }
-    return succeeded({"id": "1", "result": {"type": "agent_info", "agent": agent}})
+    return succeeded({"id": "1", "result": {"type": "agent_prompted", "agent": agent}})
 
 
 def failed_with(code: str) -> RunResult:

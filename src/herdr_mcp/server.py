@@ -64,6 +64,8 @@ SERVER_INSTRUCTIONS = (
     "When waiting_on_dialog is true, say the orchestrator is waiting on a dialog. "
     "When sent is true and screen is null, say the message was delivered "
     "and the screen could not be read. "
+    "When screen says the screen is empty, say the message was delivered "
+    "and the screen is empty. "
     "When the user later asks for the answer, call get_agent_activity with the same target. "
     "After an error that says the message may have been sent, or when the send_message call "
     "itself fails, call get_agent_activity on the same target before any new send. "
@@ -133,7 +135,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     def list_agents() -> Annotated[CallToolResult, AgentList]:
-        """List the orchestrator agents with their target, kind, status and workspace."""
+        """List the orchestrators, each alone in tab 1 of its main checkout."""
         started = time.monotonic()
         outcome = "error"
         try:
@@ -178,8 +180,8 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         agent: str,
         text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
     ) -> Annotated[CallToolResult, SentMessage]:
-        """Send the user's words unchanged to an orchestrator, addressed by its herdr name.
-        Waits up to 30 seconds for its turn to settle and returns its visible screen."""
+        """Use the orchestrator's herdr name and pass the user's words unchanged.
+        The result includes the visible screen when herdr can read it."""
         started = time.monotonic()
         outcome = "error"
         try:
