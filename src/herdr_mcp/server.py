@@ -36,7 +36,7 @@ STATUS_REFUSALS = {
     "working": "That agent is busy, so I did not send the message.",
     "blocked": AGENT_BLOCKED,
 }
-# Only these prompt errors prove that herdr sent nothing.
+# These prompt errors and `agent_not_found` prove that herdr sent nothing.
 PROMPT_REFUSALS = {
     "agent_blocked": AGENT_BLOCKED,
     "agent_not_ready": "That agent is not ready for a message, so I did not send it.",
