@@ -170,7 +170,7 @@ def orchestrator_snapshot(
     tab_number: int = 1,
     name: str | None = "alpha",
 ) -> dict[str, Any]:
-    """Moves the unnamed agent to tab number 3 unless `shared_tab`, so only `alpha`'s tab varies."""
+    """Moves the unnamed agent to tab number 3 unless `shared_tab`, so `alpha` is alone in tab 1."""
     payload = copy.deepcopy(snapshot_json)
     snapshot = payload["result"]["snapshot"]
     snapshot["agents"][0]["agent_status"] = status
@@ -268,6 +268,7 @@ PROMPT_FAILURE_SENTENCES = [
     (failed_with("timeout"), MAYBE_SENT),
     (failed_with("agent_prompt_stalled"), MAYBE_SENT),
     (failed_with("agent_not_running"), MAYBE_SENT),
+    (failed_with("server_unavailable"), MAYBE_SENT),
     (HerdrError("timeout", "agent prompt", None), MAYBE_SENT),
     (settled_as("working"), MAYBE_SENT),
 ]

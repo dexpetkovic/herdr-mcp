@@ -12,7 +12,7 @@ settled state. This project is the repository `dexpetkovic/herdr-mcp`. Its MCP s
 |---|---|---|
 | `list_agents` | It lists your orchestrator agents with their target, kind, status and workspace. | No |
 | `get_agent_activity` | It reads what one agent's screen shows now. | No |
-| `send_message` | It sends your words to a named orchestrator and returns its visible screen after the turn settles. | Yes |
+| `send_message` | It sends your words to a named orchestrator and returns the visible screen when herdr can read it. | Yes |
 
 ## Requirements
 
@@ -107,7 +107,7 @@ words unchanged. The tool sends only when the orchestrator is idle or done at it
 sending.
 
 `send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
-orchestrator's visible screen. The screen can still show an earlier answer, or only the end of a
+orchestrator's visible screen when herdr can read it. The screen can still show an earlier answer, or only the end of a
 long one. When the turn takes longer, the tool says that the message may have been sent. Read the
 screen later with `get_agent_activity`.
 

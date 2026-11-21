@@ -36,12 +36,8 @@ STATUS_REFUSALS = {
     "working": "That agent is busy, so I did not send the message.",
     "blocked": AGENT_BLOCKED,
 }
-PROMPT_FAILURES = {
-    "timeout": MAYBE_SENT,
-    "agent_prompt_stalled": MAYBE_SENT,
-    "agent_prompt_failed": MAYBE_SENT,
-    "agent_not_running": MAYBE_SENT,
-    "unexpected_output": MAYBE_SENT,
+# Only these prompt errors prove that herdr sent nothing.
+PROMPT_REFUSALS = {
     "agent_blocked": AGENT_BLOCKED,
     "agent_not_ready": "That agent is not ready for a message, so I did not send it.",
 }
@@ -208,9 +204,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
                 _log_herdr_error(error)
                 if error.code == "agent_not_found":
                     return _error_result(f"No agent named {agent} is running.")
-                if error.code in PROMPT_FAILURES:
-                    return _error_result(PROMPT_FAILURES[error.code])
-                return _spoken_error(error)
+                return _error_result(PROMPT_REFUSALS.get(error.code, MAYBE_SENT))
             try:
                 screen = trim_screen_text(herdr.read_screen(agent))
             except HerdrError as error:
