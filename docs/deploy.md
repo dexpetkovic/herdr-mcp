@@ -296,7 +296,7 @@ installation kept a stale list after I recreated the connector with the same URL
 with the URL `https://mcp.example.com/mcp?v=2` loaded the current list. The server routes that URL
 to the same endpoint, and the query string plays no part in authorization. Keep the bearer header
 when you recreate the connector. [xai-org/plugin-marketplace issue
-1402](https://github.com/xai-org/plugin-marketplace/issues/1402) describes the same cache for an
+1402](https://github.com/xai-org/plugin-marketplace/issues/1402) reports stale tool lists for an
 OAuth connector.
 
 ## Troubleshooting

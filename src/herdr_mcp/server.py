@@ -163,10 +163,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
     ) -> Annotated[CallToolResult, SentMessage]:
         """Send one instruction to the user's orchestrator agent, addressed by its herdr name.
-        Pass the user's words unchanged as `text`.
-        The server checks that the agent is the orchestrator and is idle or done just before it
-        sends. The agent can still start working, move to another tab or workspace, or lose its
-        name to a new agent before herdr delivers the message."""
+        Pass the user's words unchanged as `text`."""
         started = time.monotonic()
         outcome = "error"
         try:
