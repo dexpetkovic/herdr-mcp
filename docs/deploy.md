@@ -276,7 +276,9 @@ Add the connector.
 2. Enter `https://mcp.example.com/mcp` as the server URL.
 3. Add the header `Authorization` with the value `Bearer <token>`. `<token>` is the value of
    `HERDR_MCP_TOKEN`.
-4. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
+4. Paste the text from [grok-instructions.md](grok-instructions.md) into Grok under **Settings**,
+   then **Customize**.
+5. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
 The two probes never touch the herdr socket. On the first deployment, Grok showed the tool as
 `herdr_mcp___list_agents`.
@@ -288,6 +290,14 @@ On 2026-11-20, at least 15 public repositories shared the name herdr-mcp. This p
 repository `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
 `get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
 the client to answer from this live server. I have yet to verify whether Grok follows those instructions.
+
+Grok can keep a connector's old tool list after the server changes. On 2026-11-21, this
+installation kept a stale list after I recreated the connector with the same URL. Recreating it
+with the URL `https://mcp.example.com/mcp?v=2` loaded the current list. The server routes that URL
+to the same endpoint, and the query string plays no part in authorization. Keep the bearer header
+when you recreate the connector. [xai-org/plugin-marketplace issue
+1402](https://github.com/xai-org/plugin-marketplace/issues/1402) describes the same cache for an
+OAuth connector.
 
 ## Troubleshooting
 
@@ -304,6 +314,7 @@ the client to answer from this live server. I have yet to verify whether Grok fo
 | The container reports agents from another herdr session. | The container reads only `herdr.sock` in the mounted directory. | Check that the mounted directory holds the socket of the session you want to expose. |
 | Naming an agent fails because the name is taken. | Agent names are global per herdr server. | Give the agent a name that no other agent on the server uses. |
 | The domain also answers on `www.`. | Coolify added a `www.` copy of the domain. | Remove it under **Public access**. |
+| Grok shows old tools or old tool descriptions. | On 2026-11-21, Grok kept a connector's tool list after a re-creation with the same URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
 | Grok answers about a different herdr-mcp project. | On 2026-11-20, Grok searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
 
 On the first deployment, one Grok question produced five requests in the container log. All came

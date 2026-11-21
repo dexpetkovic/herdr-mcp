@@ -44,10 +44,20 @@ PROMPT_FAILURES = {
 SERVER_INSTRUCTIONS = (
     "This server reports the user's own herdr coding agents, live from the user's server. "
     "Call list_agents to learn what the agents are doing and which ones need attention. "
+    "list_agents marks the orchestrator agent with orchestrator true. "
     "Call get_agent_activity with a name or pane id from list_agents "
     "to read what one agent is doing right now. "
-    "Call send_message to give the user's named orchestrator agent an instruction, "
-    "only after you read the exact text back and the user says yes. "
+    "Call send_message to give the user's orchestrator an instruction. "
+    "Pass the user's words unchanged. Do not read them back or ask the user to confirm. "
+    "To pick the orchestrator, keep the marked agents in the workspace the user named, if any. "
+    "Send only when exactly one remains, its target is a name, and the name does not start "
+    "with rev-. "
+    "A rev- name is a reviewer, so say the layout is wrong and send nothing. "
+    "When several remain and the user named no workspace, ask which workspace. "
+    "That is the only question you ask. "
+    "When several remain in the named workspace, say the orchestrator is ambiguous. "
+    "When the one remaining target is a pane id, say the orchestrator has no herdr name. "
+    "When none remains, say the list found no eligible orchestrator. "
     "Keep answers short enough to speak aloud. "
     "Answer from these tools and do not search the web for herdr-mcp."
 )
@@ -58,6 +68,7 @@ class AgentSummary(BaseModel):
     kind: str
     status: str
     workspace: str
+    orchestrator: bool
 
 
 class AgentList(BaseModel):
@@ -81,18 +92,18 @@ def summarise_agents(records: list[AgentRecord]) -> list[AgentSummary]:
             kind=record.kind if record.kind is not None else "unknown",
             status=record.status,
             workspace=record.workspace_label if record.workspace_label is not None else "unknown",
+            orchestrator=is_orchestrator_position(record),
         )
         for record in records
     ]
 
 
+def is_orchestrator_position(record: AgentRecord) -> bool:
+    return record.is_main_checkout is True and record.tab_number == 1 and record.agents_in_tab == 1
+
+
 def is_orchestrator(record: AgentRecord) -> bool:
-    return (
-        bool(record.name)
-        and record.is_main_checkout is True
-        and record.tab_number == 1
-        and record.agents_in_tab == 1
-    )
+    return bool(record.name) and is_orchestrator_position(record)
 
 
 def trim_screen_text(screen: str) -> str:
@@ -106,7 +117,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
     def list_agents() -> Annotated[CallToolResult, AgentList]:
-        """List herdr agents with their target, kind, status and workspace."""
+        """List herdr agents with their target, kind, status, workspace and orchestrator flag."""
         started = time.monotonic()
         outcome = "error"
         try:
@@ -152,7 +163,7 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
     ) -> Annotated[CallToolResult, SentMessage]:
         """Send one instruction to the user's orchestrator agent, addressed by its herdr name.
-        Read the exact message back to the user and wait for a spoken yes before you call this.
+        Pass the user's words unchanged as `text`.
         The server checks that the agent is the orchestrator and is idle or done just before it
         sends. The agent can still start working, move to another tab or workspace, or lose its
         name to a new agent before herdr delivers the message."""
