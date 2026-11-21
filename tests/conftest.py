@@ -50,10 +50,34 @@ EXPECTED_RECORDS = [
     AgentRecord("gamma", "w3:p1", "codex", "done", None, None, None, 1),
 ]
 EXPECTED_SUMMARIES = [
-    {"target": "alpha", "kind": "claude", "status": "working", "workspace": "api"},
-    {"target": "w1:p2", "kind": "codex", "status": "idle", "workspace": "api"},
-    {"target": "beta", "kind": "claude", "status": "blocked", "workspace": "web"},
-    {"target": "gamma", "kind": "codex", "status": "done", "workspace": "unknown"},
+    {
+        "target": "alpha",
+        "kind": "claude",
+        "status": "working",
+        "workspace": "api",
+        "orchestrator": False,
+    },
+    {
+        "target": "w1:p2",
+        "kind": "codex",
+        "status": "idle",
+        "workspace": "api",
+        "orchestrator": False,
+    },
+    {
+        "target": "beta",
+        "kind": "claude",
+        "status": "blocked",
+        "workspace": "web",
+        "orchestrator": False,
+    },
+    {
+        "target": "gamma",
+        "kind": "codex",
+        "status": "done",
+        "workspace": "unknown",
+        "orchestrator": False,
+    },
 ]
 UNREADABLE_STDERR = {
     "plain text": "panic",
@@ -163,12 +187,15 @@ def orchestrator_snapshot(
     status: str = "idle",
     shared_tab: bool = False,
     tab_number: int = 1,
+    named: bool = True,
 ) -> dict[str, Any]:
     """Moves the unnamed agent to tab number 3 unless `shared_tab`, so only `alpha`'s tab varies."""
     payload = copy.deepcopy(snapshot_json)
     snapshot = payload["result"]["snapshot"]
     snapshot["agents"][0]["agent_status"] = status
     snapshot["tabs"][0]["number"] = tab_number
+    if not named:
+        del snapshot["agents"][0]["name"]
     if not shared_tab:
         snapshot["agents"][1]["tab_id"] = "w1:t2"
         snapshot["tabs"].append(

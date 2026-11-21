@@ -96,15 +96,14 @@ that you trust with what your agents show.
 
 ## Limits of send_message
 
-`send_message` sends only to a named orchestrator. The orchestrator is the only agent in tab 1 of a
-main checkout. Name it with `herdr agent rename`. The server tells the client to read the exact
-message back and wait for your yes. The tool sends only when the orchestrator is idle or done at its
-check just before sending.
+`send_message` sends only to a named orchestrator. The orchestrator must be the only agent in tab 1
+of the main checkout's workspace. Name it with `herdr agent rename`. `list_agents` marks the
+orchestrator with `orchestrator: true`. The server tells the client to send your words unchanged.
+The tool sends only when the orchestrator is idle or done at its check just before sending.
 
 - The orchestrator can start working between that check and the delivery.
 - The agent can move to another tab or workspace, or lose its name to a new agent, before herdr
   delivers the message.
-- The client is responsible for reading the message back and waiting for your yes.
 
 ## License
 

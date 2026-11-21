@@ -64,6 +64,21 @@ def test_summarise_agents_falls_back_to_pane_id_and_unknown_workspace(snapshot_h
     assert summaries == [AgentSummary(**summary) for summary in EXPECTED_SUMMARIES]
 
 
+def test_unnamed_agent_alone_in_tab_one_of_the_main_checkout_is_marked_orchestrator(
+    snapshot_json, fake_runner
+):
+    snapshot = orchestrator_snapshot(snapshot_json, named=False)
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)}))
+
+    assert summarise_agents(herdr.snapshot())[0].model_dump() == {
+        "target": "w1:p1",
+        "kind": "claude",
+        "status": "idle",
+        "workspace": "api",
+        "orchestrator": True,
+    }
+
+
 def test_summary_without_kind_says_unknown(snapshot_json, fake_runner):
     snapshot_json["result"]["snapshot"]["agents"][0]["agent"] = None
     herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
