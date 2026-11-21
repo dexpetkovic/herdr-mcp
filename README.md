@@ -2,9 +2,9 @@
 
 `herdr-mcp` is an MCP server for [herdr](https://herdr.dev) agents. A voice client such as Grok can
 list your orchestrator agents and read one agent's visible screen. It can also send your words to
-an orchestrator. `send_message` returns the orchestrator's visible screen after herdr reports a
-settled state. This project is the repository `dexpetkovic/herdr-mcp`. Its MCP server name is
-`herdr`, which a client shows as `serverInfo.name`.
+an orchestrator. After herdr reports a settled state, `send_message` returns the orchestrator's
+visible screen when herdr can read it. This project is the repository `dexpetkovic/herdr-mcp`. Its
+MCP server name is `herdr`, which a client shows as `serverInfo.name`.
 
 ## Tools
 
