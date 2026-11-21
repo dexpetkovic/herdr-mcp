@@ -1,0 +1,13 @@
+[Unit]
+Description=herdr-mcp, an MCP server for herdr agents
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+UnsetEnvironment=HERDR_SOCKET_PATH
+EnvironmentFile=%h/.config/herdr-mcp/env
+ExecStart=%h/.local/bin/herdr-mcp
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
