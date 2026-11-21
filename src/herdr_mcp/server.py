@@ -40,6 +40,7 @@ PROMPT_FAILURES = {
     "timeout": MAYBE_SENT,
     "agent_prompt_stalled": MAYBE_SENT,
     "agent_prompt_failed": MAYBE_SENT,
+    "agent_not_running": MAYBE_SENT,
     "unexpected_output": MAYBE_SENT,
     "agent_blocked": AGENT_BLOCKED,
     "agent_not_ready": "That agent is not ready for a message, so I did not send it.",

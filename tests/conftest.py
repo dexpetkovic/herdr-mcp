@@ -267,6 +267,7 @@ PROMPT_FAILURE_SENTENCES = [
     (failed_with("agent_prompt_failed"), MAYBE_SENT),
     (failed_with("timeout"), MAYBE_SENT),
     (failed_with("agent_prompt_stalled"), MAYBE_SENT),
+    (failed_with("agent_not_running"), MAYBE_SENT),
     (HerdrError("timeout", "agent prompt", None), MAYBE_SENT),
     (settled_as("working"), MAYBE_SENT),
 ]

@@ -25,7 +25,7 @@ class Runner(Protocol):
 
 
 class HerdrError(Exception):
-    """A herdr call failed. `field` is the dotted path of malformed snapshot data, when known."""
+    """A herdr call failed. `field` is the dotted path of malformed response data, when known."""
 
     def __init__(
         self, code: str, command: str, exit_code: int | None, field: str | None = None
