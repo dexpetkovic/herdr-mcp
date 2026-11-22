@@ -29,6 +29,11 @@ REVIEWER_NAME = re.compile(r"(?:^|-)rev-")
 CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 READY_STATUSES = frozenset({"idle", "done"})
 REPLY_WAIT_MS = 30000
+VOICE_MESSAGE_FRAME = (
+    'Voice message from the engineer, relayed by Grok: "{text}". '
+    "Reply in plain text and do not open a question dialog. "
+    "If you need me to choose, list numbered options and end your turn."
+)
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
 MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
@@ -48,6 +53,11 @@ SERVER_INSTRUCTIONS = (
     "Call list_agents to find the orchestrators. It lists only orchestrators. "
     "Send every question or instruction about the agents to an orchestrator with send_message. "
     "Pass the user's words unchanged. Do not read them back or ask the user to confirm. "
+    "The server asks the orchestrator to reply in plain text and to list numbered options "
+    "instead of opening a question dialog. Read those options aloud. "
+    "When the user answers one, such as option 2, call send_message with the same target "
+    "whose reply held the options. Do not read the answer back or ask for a workspace. "
+    "If that target is gone or refuses the message, say so and send it nowhere else. "
     "To pick the orchestrator, keep the rows in the workspace the user named, if any. "
     "Send only when exactly one remains and its target is a name. "
     "When several remain and the user named no workspace, ask which workspace. "
@@ -58,7 +68,8 @@ SERVER_INSTRUCTIONS = (
     "send_message waits for the orchestrator's turn to settle and returns its visible screen. "
     "Summarise screen in a few spoken sentences as what the orchestrator's screen shows. "
     "When the screen does not show an answer to the user's message, say what it does show. "
-    "When waiting_on_dialog is true, say the orchestrator is waiting on a dialog. "
+    "When waiting_on_dialog is true or the send is refused because the orchestrator is "
+    "waiting on a dialog, say it needs attention at the computer. "
     "When sent is true and screen is null, say the message was delivered "
     "and the screen could not be read. "
     "When screen says the screen is empty, say the message was delivered "
@@ -177,8 +188,8 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
         agent: str,
         text: Annotated[str, Field(min_length=1, max_length=MAX_MESSAGE_CHARACTERS)],
     ) -> Annotated[CallToolResult, SentMessage]:
-        """Use the orchestrator's herdr name and pass the user's words unchanged.
-        The result includes the visible screen when herdr can read it."""
+        """Use the orchestrator's herdr name and pass the user's words unchanged. The server asks
+        for a plain-text reply. The result includes the visible screen when herdr can read it."""
         started = time.monotonic()
         outcome = "error"
         try:
@@ -199,7 +210,9 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             if refusal is not None:
                 return _error_result(refusal)
             try:
-                settled_status = herdr.prompt(agent, text, REPLY_WAIT_MS)
+                settled_status = herdr.prompt(
+                    agent, VOICE_MESSAGE_FRAME.format(text=text), REPLY_WAIT_MS
+                )
             except HerdrError as error:
                 _log_herdr_error(error)
                 if error.code == "agent_not_found":
