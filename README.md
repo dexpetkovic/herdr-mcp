@@ -106,6 +106,15 @@ named orchestrator. Name it with `herdr agent rename`. The server tells the clie
 words unchanged. The tool sends only when the orchestrator is idle or done at its check just before
 sending.
 
+The server wraps your words in one line before it sends them. The orchestrator receives this text.
+
+```
+Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.
+```
+
+You answer the options with another message, such as "option 2". Grok sends that answer to the
+same orchestrator name. Claude Code's own permission prompts still need the computer.
+
 `send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
 orchestrator's visible screen when herdr can read it. The screen can still show an earlier answer, or only the end of a
 long one. When the turn takes longer, the tool says that the message may have been sent. Read the

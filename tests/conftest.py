@@ -211,6 +211,23 @@ def failed_with(code: str) -> RunResult:
 
 
 MESSAGE = "run the tests"
+FRAMED_MESSAGE = (
+    'Voice message from the engineer, relayed by Grok: "run the tests". '
+    "Reply in plain text and do not open a question dialog. "
+    "If you need me to choose, list numbered options and end your turn."
+)
+QUOTED_MESSAGE = 'should we use "A" or {B}?'
+FRAMED_QUOTED_MESSAGE = (
+    'Voice message from the engineer, relayed by Grok: "should we use "A" or {B}?". '
+    "Reply in plain text and do not open a question dialog. "
+    "If you need me to choose, list numbered options and end your turn."
+)
+LONGEST_MESSAGE = "a" * 2000
+FRAMED_LONGEST_MESSAGE = (
+    'Voice message from the engineer, relayed by Grok: "' + "a" * 2000 + '". '
+    "Reply in plain text and do not open a question dialog. "
+    "If you need me to choose, list numbered options and end your turn."
+)
 UNSENDABLE_CHARACTER = "The message contains a character I cannot send."
 NOT_ORCHESTRATOR = "I can only send messages to an orchestrator agent."
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."

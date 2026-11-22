@@ -3,11 +3,16 @@ import logging
 import pytest
 from conftest import (
     EARLIER_AND_NEW_ANSWER,
+    FRAMED_LONGEST_MESSAGE,
+    FRAMED_MESSAGE,
+    FRAMED_QUOTED_MESSAGE,
     INITIALIZE_REQUEST,
     LIST_AGENTS_CALL,
+    LONGEST_MESSAGE,
     MESSAGE,
     ORCHESTRATOR_SUMMARY,
     PROMPT_FAILURE_SENTENCES,
+    QUOTED_MESSAGE,
     SCREEN_TEXT,
     SEND_MESSAGE_REFUSALS,
     SNAPSHOT_ARGS,
@@ -203,7 +208,7 @@ def test_send_message_speaks_each_prompt_failure(
     runner = fake_runner(
         {
             SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
-            prompt_args("alpha", MESSAGE): prompt_result,
+            prompt_args("alpha", FRAMED_MESSAGE): prompt_result,
         }
     )
 
@@ -214,16 +219,22 @@ def test_send_message_speaks_each_prompt_failure(
     assert (result["isError"], result["content"]) == (True, [{"type": "text", "text": sentence}])
 
 
-@pytest.mark.parametrize("status", ["idle", "done"])
-def test_send_message_returns_the_screen_after_the_turn_settles(
-    snapshot_json, fake_runner, caplog, status
+@pytest.mark.parametrize(
+    ("status", "text", "framed_text"),
+    [
+        ("idle", MESSAGE, FRAMED_MESSAGE),
+        ("done", QUOTED_MESSAGE, FRAMED_QUOTED_MESSAGE),
+        ("idle", LONGEST_MESSAGE, FRAMED_LONGEST_MESSAGE),
+    ],
+)
+def test_send_message_frames_the_words_and_returns_the_screen_after_the_turn_settles(
+    snapshot_json, fake_runner, caplog, status, text, framed_text
 ):
     caplog.set_level(logging.INFO, logger="herdr_mcp")
-    text = "-x is anything blocked"
     runner = fake_runner(
         {
             SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json, status=status)),
-            prompt_args("alpha", text): settled_as("done"),
+            prompt_args("alpha", framed_text): settled_as("done"),
             screen_read_args("alpha"): RunResult(0, EARLIER_AND_NEW_ANSWER, ""),
         }
     )
@@ -238,7 +249,11 @@ def test_send_message_returns_the_screen_after_the_turn_settles(
         "screen": TRIMMED_EARLIER_AND_NEW_ANSWER,
         "waiting_on_dialog": False,
     }
-    assert runner.calls == [SNAPSHOT_ARGS, prompt_args("alpha", text), screen_read_args("alpha")]
+    assert runner.calls == [
+        SNAPSHOT_ARGS,
+        prompt_args("alpha", framed_text),
+        screen_read_args("alpha"),
+    ]
     records = [record for record in caplog.records if record.getMessage() == "tool call"]
     assert [(record.tool, record.outcome) for record in records] == [("send_message", "ok")]
 
@@ -249,7 +264,7 @@ def test_send_message_that_settles_on_a_dialog_survives_a_failed_screen_read(
     runner = fake_runner(
         {
             SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
-            prompt_args("alpha", MESSAGE): settled_as("blocked"),
+            prompt_args("alpha", FRAMED_MESSAGE): settled_as("blocked"),
             screen_read_args("alpha"): failed_with("agent_not_found"),
         }
     )
