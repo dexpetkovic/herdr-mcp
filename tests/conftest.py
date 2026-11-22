@@ -49,36 +49,15 @@ EXPECTED_RECORDS = [
     AgentRecord("beta", "w2:p1", "claude", "blocked", "web", False, 1, 1),
     AgentRecord("gamma", "w3:p1", "codex", "done", None, None, None, 1),
 ]
-EXPECTED_SUMMARIES = [
-    {
-        "target": "alpha",
-        "kind": "claude",
-        "status": "working",
-        "workspace": "api",
-        "orchestrator": False,
-    },
-    {
-        "target": "w1:p2",
-        "kind": "codex",
-        "status": "idle",
-        "workspace": "api",
-        "orchestrator": False,
-    },
-    {
-        "target": "beta",
-        "kind": "claude",
-        "status": "blocked",
-        "workspace": "web",
-        "orchestrator": False,
-    },
-    {
-        "target": "gamma",
-        "kind": "codex",
-        "status": "done",
-        "workspace": "unknown",
-        "orchestrator": False,
-    },
-]
+ORCHESTRATOR_SUMMARY = {"target": "alpha", "kind": "claude", "status": "idle", "workspace": "api"}
+EARLIER_AND_NEW_ANSWER = (
+    "> list the open pull requests\n\nNo pull requests are open.\n\n"
+    "> is anything blocked\n\nNothing is blocked.   \n\n\n"
+)
+TRIMMED_EARLIER_AND_NEW_ANSWER = (
+    "> list the open pull requests\n\nNo pull requests are open.\n\n"
+    "> is anything blocked\n\nNothing is blocked."
+)
 UNREADABLE_STDERR = {
     "plain text": "panic",
     "oversized integer": "1" * 5000,
@@ -117,16 +96,18 @@ READ_ALPHA_ARGS = screen_read_args("alpha")
 
 
 def prompt_args(name: str, text: str) -> tuple[str, ...]:
-    return ("herdr", "agent", "prompt", name, text)
+    return ("herdr", "agent", "prompt", name, text, "--wait", "--timeout", "30000")
 
 
 class FakeRunner:
     def __init__(self, results: dict[tuple[str, ...], RunResult | Exception]) -> None:
         self._results = results
         self.calls: list[tuple[str, ...]] = []
+        self.timeouts: list[float] = []
 
     def __call__(self, args: list[str], timeout: float) -> RunResult:
         self.calls.append(tuple(args))
+        self.timeouts.append(timeout)
         result = self._results[tuple(args)]
         if isinstance(result, Exception):
             raise result
@@ -187,15 +168,16 @@ def orchestrator_snapshot(
     status: str = "idle",
     shared_tab: bool = False,
     tab_number: int = 1,
-    named: bool = True,
+    name: str | None = "alpha",
 ) -> dict[str, Any]:
-    """Moves the unnamed agent to tab number 3 unless `shared_tab`, so only `alpha`'s tab varies."""
     payload = copy.deepcopy(snapshot_json)
     snapshot = payload["result"]["snapshot"]
     snapshot["agents"][0]["agent_status"] = status
     snapshot["tabs"][0]["number"] = tab_number
-    if not named:
+    if name is None:
         del snapshot["agents"][0]["name"]
+    else:
+        snapshot["agents"][0]["name"] = name
     if not shared_tab:
         snapshot["agents"][1]["tab_id"] = "w1:t2"
         snapshot["tabs"].append(
@@ -206,6 +188,21 @@ def orchestrator_snapshot(
 
 def succeeded(payload: Any) -> RunResult:
     return RunResult(exit_code=0, stdout=json.dumps(payload), stderr="")
+
+
+def settled_as(status: str) -> RunResult:
+    agent = {
+        "terminal_id": "t1",
+        "pane_id": "w1:p1",
+        "workspace_id": "w1",
+        "tab_id": "w1:t1",
+        "agent": "claude",
+        "name": "alpha",
+        "agent_status": status,
+        "focused": False,
+        "revision": 7,
+    }
+    return succeeded({"id": "1", "result": {"type": "agent_prompted", "agent": agent}})
 
 
 def failed_with(code: str) -> RunResult:
@@ -241,6 +238,8 @@ SEND_MESSAGE_REFUSALS = [
     ("alpha", MESSAGE, {"tab_number": 2}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
     ("beta", MESSAGE, {}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
     ("gamma", MESSAGE, {}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
+    ("rev-main", MESSAGE, {"name": "rev-main"}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
+    ("hm-rev-main", MESSAGE, {"name": "hm-rev-main"}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
     (
         "alpha",
         MESSAGE,
@@ -265,7 +264,12 @@ PROMPT_FAILURE_SENTENCES = [
     ),
     (failed_with("agent_not_found"), "No agent named alpha is running."),
     (failed_with("agent_prompt_failed"), MAYBE_SENT),
+    (failed_with("timeout"), MAYBE_SENT),
+    (failed_with("agent_prompt_stalled"), MAYBE_SENT),
+    (failed_with("agent_not_running"), MAYBE_SENT),
+    (failed_with("server_unavailable"), MAYBE_SENT),
     (HerdrError("timeout", "agent prompt", None), MAYBE_SENT),
+    (settled_as("working"), MAYBE_SENT),
 ]
 
 

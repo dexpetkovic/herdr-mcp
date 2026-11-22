@@ -299,6 +299,9 @@ when you recreate the connector. [xai-org/plugin-marketplace issue
 1402](https://github.com/xai-org/plugin-marketplace/issues/1402) reports stale tool lists for an
 OAuth connector.
 
+If Grok still shows the old tool descriptions after a deployment that changes them, recreate the
+connector with a new `v` value as described above.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

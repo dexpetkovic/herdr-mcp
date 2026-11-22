@@ -2,20 +2,23 @@ import logging
 
 import pytest
 from conftest import (
-    EXPECTED_SUMMARIES,
+    EARLIER_AND_NEW_ANSWER,
     INITIALIZE_REQUEST,
     LIST_AGENTS_CALL,
     MESSAGE,
+    ORCHESTRATOR_SUMMARY,
     PROMPT_FAILURE_SENTENCES,
     SCREEN_TEXT,
     SEND_MESSAGE_REFUSALS,
     SNAPSHOT_ARGS,
+    TRIMMED_EARLIER_AND_NEW_ANSWER,
     TRIMMED_SCREEN,
     failed_with,
     mcp_session,
     orchestrator_snapshot,
     prompt_args,
     screen_read_args,
+    settled_as,
     succeeded,
     tool_call,
 )
@@ -29,12 +32,15 @@ from herdr_mcp.server import (
 )
 
 
-def test_list_agents_over_streamable_http_returns_json(snapshot_herdr):
-    with mcp_session(snapshot_herdr) as (client, headers):
+def test_list_agents_over_streamable_http_returns_only_the_orchestrator(snapshot_json, fake_runner):
+    snapshot = orchestrator_snapshot(snapshot_json)
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)}))
+
+    with mcp_session(herdr) as (client, headers):
         response = client.post("/mcp", headers=headers, json=LIST_AGENTS_CALL)
 
     assert response.headers["content-type"] == "application/json"
-    assert response.json()["result"]["structuredContent"] == {"agents": EXPECTED_SUMMARIES}
+    assert response.json()["result"]["structuredContent"] == {"agents": [ORCHESTRATOR_SUMMARY]}
 
 
 def test_unlisted_host_is_rejected(snapshot_herdr):
@@ -58,30 +64,31 @@ def test_herdr_not_running_is_spoken_as_one_sentence(fake_runner):
     )
 
 
-def test_summarise_agents_falls_back_to_pane_id_and_unknown_workspace(snapshot_herdr):
-    summaries = summarise_agents(snapshot_herdr.snapshot())
-
-    assert summaries == [AgentSummary(**summary) for summary in EXPECTED_SUMMARIES]
+def test_summarise_agents_leaves_out_agents_outside_the_orchestrator_position(snapshot_herdr):
+    assert summarise_agents(snapshot_herdr.snapshot()) == []
 
 
-def test_unnamed_agent_alone_in_tab_one_of_the_main_checkout_is_marked_orchestrator(
-    snapshot_json, fake_runner
-):
-    snapshot = orchestrator_snapshot(snapshot_json, named=False)
+def test_unnamed_orchestrator_is_listed_by_its_pane_id(snapshot_json, fake_runner):
+    snapshot = orchestrator_snapshot(snapshot_json, name=None)
     herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)}))
 
-    assert summarise_agents(herdr.snapshot())[0].model_dump() == {
-        "target": "w1:p1",
-        "kind": "claude",
-        "status": "idle",
-        "workspace": "api",
-        "orchestrator": True,
-    }
+    assert summarise_agents(herdr.snapshot()) == [
+        AgentSummary(**{**ORCHESTRATOR_SUMMARY, "target": "w1:p1"})
+    ]
+
+
+@pytest.mark.parametrize("name", ["rev-main", "hm-rev-main"])
+def test_reviewer_alone_in_tab_one_is_not_listed(snapshot_json, fake_runner, name):
+    snapshot = orchestrator_snapshot(snapshot_json, name=name)
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)}))
+
+    assert summarise_agents(herdr.snapshot()) == []
 
 
 def test_summary_without_kind_says_unknown(snapshot_json, fake_runner):
-    snapshot_json["result"]["snapshot"]["agents"][0]["agent"] = None
-    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot_json)}))
+    snapshot = orchestrator_snapshot(snapshot_json)
+    snapshot["result"]["snapshot"]["agents"][0]["agent"] = None
+    herdr = Herdr("herdr", fake_runner({SNAPSHOT_ARGS: succeeded(snapshot)}))
 
     assert summarise_agents(herdr.snapshot())[0].kind == "unknown"
 
@@ -208,13 +215,16 @@ def test_send_message_speaks_each_prompt_failure(
 
 
 @pytest.mark.parametrize("status", ["idle", "done"])
-def test_send_message_prompts_a_ready_orchestrator(snapshot_json, fake_runner, caplog, status):
+def test_send_message_returns_the_screen_after_the_turn_settles(
+    snapshot_json, fake_runner, caplog, status
+):
     caplog.set_level(logging.INFO, logger="herdr_mcp")
-    text = "-x run the tests"
+    text = "-x is anything blocked"
     runner = fake_runner(
         {
             SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json, status=status)),
-            prompt_args("alpha", text): RunResult(0, "", ""),
+            prompt_args("alpha", text): settled_as("done"),
+            screen_read_args("alpha"): RunResult(0, EARLIER_AND_NEW_ANSWER, ""),
         }
     )
 
@@ -222,10 +232,38 @@ def test_send_message_prompts_a_ready_orchestrator(snapshot_json, fake_runner, c
         call = tool_call("send_message", {"agent": "alpha", "text": text})
         result = client.post("/mcp", headers=headers, json=call).json()["result"]
 
-    assert result["structuredContent"] == {"target": "alpha", "sent": True}
-    assert runner.calls == [SNAPSHOT_ARGS, prompt_args("alpha", text)]
+    assert result["structuredContent"] == {
+        "target": "alpha",
+        "sent": True,
+        "screen": TRIMMED_EARLIER_AND_NEW_ANSWER,
+        "waiting_on_dialog": False,
+    }
+    assert runner.calls == [SNAPSHOT_ARGS, prompt_args("alpha", text), screen_read_args("alpha")]
     records = [record for record in caplog.records if record.getMessage() == "tool call"]
     assert [(record.tool, record.outcome) for record in records] == [("send_message", "ok")]
+
+
+def test_send_message_that_settles_on_a_dialog_survives_a_failed_screen_read(
+    snapshot_json, fake_runner
+):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
+            prompt_args("alpha", MESSAGE): settled_as("blocked"),
+            screen_read_args("alpha"): failed_with("agent_not_found"),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": "alpha", "text": MESSAGE})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert result["structuredContent"] == {
+        "target": "alpha",
+        "sent": True,
+        "screen": None,
+        "waiting_on_dialog": True,
+    }
 
 
 def test_send_message_rejects_a_text_over_2000_characters(fake_runner):

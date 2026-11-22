@@ -1,17 +1,18 @@
 # herdr-mcp
 
 `herdr-mcp` is an MCP server for [herdr](https://herdr.dev) agents. A voice client such as Grok can
-list your herdr agents, read one agent's visible screen and send an instruction to your orchestrator
-agent. This project is the repository `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`,
-which a client shows as `serverInfo.name`.
+list your orchestrator agents and read one agent's visible screen. It can also send your words to
+an orchestrator. After herdr reports a settled state, `send_message` returns the orchestrator's
+visible screen when herdr can read it. This project is the repository `dexpetkovic/herdr-mcp`. Its
+MCP server name is `herdr`, which a client shows as `serverInfo.name`.
 
 ## Tools
 
 | Tool | What it does | Changes anything |
 |---|---|---|
-| `list_agents` | It lists every herdr agent with its target, kind, status and workspace. | No |
+| `list_agents` | It lists your orchestrator agents with their target, kind, status and workspace. | No |
 | `get_agent_activity` | It reads what one agent's screen shows now. | No |
-| `send_message` | It sends one instruction to your named orchestrator agent. | Yes |
+| `send_message` | It sends your words to a named orchestrator and returns the visible screen when herdr can read it. | Yes |
 
 ## Requirements
 
@@ -96,10 +97,19 @@ that you trust with what your agents show.
 
 ## Limits of send_message
 
-`send_message` sends only to a named orchestrator. The orchestrator must be the only agent in tab 1
-of the main checkout's workspace. Name it with `herdr agent rename`. `list_agents` marks the
-orchestrator with `orchestrator: true`. The server tells the client to send your words unchanged.
-The tool sends only when the orchestrator is idle or done at its check just before sending.
+herdr-mcp supports one layout. Each project has one workspace on its main checkout, and workspace
+labels tell the projects apart. Tab 1 of that workspace holds only the orchestrator. A reviewer's
+name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`.
+
+`list_agents` lists only the agents in the orchestrator position. `send_message` sends only to a
+named orchestrator. Name it with `herdr agent rename`. The server tells the client to send your
+words unchanged. The tool sends only when the orchestrator is idle or done at its check just before
+sending.
+
+`send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
+orchestrator's visible screen when herdr can read it. The screen can still show an earlier answer, or only the end of a
+long one. When the turn takes longer, the tool says that the message may have been sent. Read the
+screen later with `get_agent_activity`.
 
 - The orchestrator can start working between that check and the delivery.
 - The agent can move to another tab or workspace, or lose its name to a new agent, before herdr
