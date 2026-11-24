@@ -12,8 +12,7 @@ export HERDR_MCP_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsaf
 
 ## Before you start
 
-Get read access to the repository from its owner and clone it. Every path below starts from that
-checkout. Choose a hostname in your Cloudflare zone for the public path. `mcp.example.com` stands for
+Clone the repository. Every path below starts from that checkout. Choose a hostname in your Cloudflare zone for the public path. `mcp.example.com` stands for
 that hostname everywhere below. Each path needs its own tools.
 
 - On a Mac, you need `uv` and a herdr CLI of the same version as the running herdr server.
@@ -69,7 +68,7 @@ Coolify's GitHub App source.
 
 The Compose file mounts the herdr socket directory read-only at `/herdr`. The read-only mount is
 enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the Compose
-file publishes no port. On the first deployment, Coolify held port 8000, so herdr-mcp listens on
+file publishes no port. The Coolify dashboard uses port 8000 by default. herdr-mcp listens on port
 8765.
 
 Create the resource with these steps.
@@ -156,12 +155,12 @@ The public path must meet three requirements. Each vendor's own guide gives the 
 1. Cloudflare is the only public way in to the MCP endpoint. A firewall at the hosting provider accepts ports 80 and 443
    only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/). UFW on the server does not
    filter ports that Docker publishes, as [Docker's firewall
-   documentation](https://docs.docker.com/engine/network/packet-filtering-firewalls/) explains. The
-   first deployment used a [Hetzner Cloud
+   documentation](https://docs.docker.com/engine/network/packet-filtering-firewalls/) explains. On
+   Hetzner, use a [Hetzner Cloud
    Firewall](https://docs.hetzner.com/cloud/firewalls/getting-started/creating-a-firewall/).
 2. The reverse proxy presents a certificate for the hostname that [Full
    (strict)](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
-   accepts. The first deployment used a Cloudflare Origin CA certificate. Create one with
+   accepts. A Cloudflare Origin CA certificate meets this requirement. Create one with
    [Cloudflare's Origin CA guide](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/),
    and skip that guide's step for the SSL/TLS mode. On Coolify, install it on Traefik with
    [Coolify's custom certificate
@@ -212,10 +211,9 @@ because the app records its webhook URL when you create it.
 6. When you create the GitHub App, choose **Use a custom endpoint**. Enter
    `https://coolify.example.com` as the base URL. Cloudflare's proxy does not forward port 8000.
 
-The first deployment allowed GitHub's webhook IP ranges on port 8000 instead. That path sends
-payloads over plain HTTP, so this guide does not use it. Coolify step 13 confirms a delivery
-afterwards. A Cloudflare Access policy on the dashboard hostname must let the GitHub App's webhook
-through.
+Use the HTTPS hostname for webhook delivery. Step 13 of [On Coolify](#on-coolify) checks a delivery
+after the deploy. If Cloudflare Access protects the dashboard hostname, its policy must let the
+GitHub App's webhook through.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
@@ -238,9 +236,9 @@ The last line reads as follows.
 Hostname mcp.example.com does match certificate
 ```
 
-When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. On
-the first deployment, a host process behind Coolify's Traefik timed out. UFW dropped the traffic
-from Coolify's bridge networks to the host. Traefik answered 504 after 30 seconds.
+When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. A
+host firewall such as UFW can drop traffic from the proxy's bridge network to a host process.
+Traefik can then return `504` because it cannot connect to the host process.
 
 Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. The MCP SDK answers 421 to a Host header outside
 its allowed list. The list holds the loopback hosts and `HERDR_MCP_PUBLIC_HOST`.
@@ -280,27 +278,24 @@ Add the connector.
    then **Customize**.
 5. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
-The two probes never touch the herdr socket. On the first deployment, Grok showed the tool as
-`herdr_mcp___list_agents`.
+The two probes test the endpoint without touching the herdr socket. The question in step 5 checks
+whether Grok can read live agent state through herdr-mcp.
 
-On the first deployment, a connector added at grok.com also worked in the Grok mobile app. Grok in a
-car has no recorded test yet.
+In my testing, the Grok mobile app used a connector added at grok.com after I signed in to the same
+account in the app. [Use it in your Tesla](../README.md#use-it-in-your-tesla) shows how to use the
+connector in the car.
 
-On 2026-11-20, at least 15 public repositories shared the name herdr-mcp. This project is the
-repository `dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
+This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server name is `herdr`. Its tools are `list_agents`,
 `get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
-the client to answer from this live server. I have yet to verify whether Grok follows those instructions.
+the client to answer from this live server.
 
-Grok can keep a connector's old tool list after the server changes. On 2026-11-21, this
-installation kept a stale list after I recreated the connector with the same URL. Recreating it
-with the URL `https://mcp.example.com/mcp?v=2` loaded the current list. The server routes that URL
-to the same endpoint, and the query string plays no part in authorization. Keep the bearer header
-when you recreate the connector. [xai-org/plugin-marketplace issue
+Grok can keep a connector's old tool list after the server changes, even when you recreate the
+connector with the same URL. Recreate the connector with a new `v` value instead, such as
+`https://mcp.example.com/mcp?v=2`, and raise the number each time. The new URL reaches the same
+endpoint. The query string plays no part in authorization. Keep the bearer header when you recreate
+the connector. [xai-org/plugin-marketplace issue
 1402](https://github.com/xai-org/plugin-marketplace/issues/1402) reports stale tool lists for an
 OAuth connector.
-
-If Grok still shows the old tool descriptions after a deployment that changes them, recreate the
-connector with a new `v` value as described above.
 
 ## Troubleshooting
 
@@ -308,7 +303,7 @@ connector with a new `v` value as described above.
 |---|---|---|
 | A request that sends the token gets `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
 | A request gets `421`. | The Host header is neither a loopback host nor `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
-| Traefik returns `504` after 30 seconds. | On the first deployment, UFW dropped traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
+| Traefik returns `504`. | A host firewall such as UFW may drop traffic from the proxy's bridge network to a host process. | Run herdr-mcp as a container on the proxy's network. |
 | The browser reports too many redirects. | Cloudflare uses the **Flexible** encryption mode for the hostname. | Set **Full (strict)** for the hostname. |
 | Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Meet requirement 2 in [Expose it through one public path](#expose-it-through-one-public-path). |
 | herdr reports a permission error on `herdr.sock`. | herdr-mcp runs as a user that does not own the socket. | Run it with the uid and gid that `id -u` and `id -g` print for the herdr user. |
@@ -317,13 +312,13 @@ connector with a new `v` value as described above.
 | The container reports agents from another herdr session. | The container reads only `herdr.sock` in the mounted directory. | Check that the mounted directory holds the socket of the session you want to expose. |
 | Naming an agent fails because the name is taken. | Agent names are global per herdr server. | Give the agent a name that no other agent on the server uses. |
 | The domain also answers on `www.`. | Coolify added a `www.` copy of the domain. | Remove it under **Public access**. |
-| Grok shows old tools or old tool descriptions. | On 2026-11-21, Grok kept a connector's tool list after a re-creation with the same URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
-| Grok answers about a different herdr-mcp project. | On 2026-11-20, Grok searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
+| Grok shows old tools or old tool descriptions. | Grok may have cached the tool list for that URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
+| Grok answers about a different herdr-mcp project. | Grok may have searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
 
-On the first deployment, one Grok question produced five requests in the container log. All came
-from the proxy's address. `initialize` returned 200. The initialized notification returned 202.
-`GET /mcp` opened the server stream and returned 200. The tool request returned 200. `DELETE /mcp`
-returned 200.
+In one example, a single Grok question produced five requests in the container log. All came from
+the proxy's address. `initialize` returned 200. The initialized
+notification returned 202. `GET /mcp` opened the server stream and returned 200. The tool request
+returned 200. `DELETE /mcp` returned 200.
 
 herdr-mcp logs a separate `tool call` record for each tool call. The record ends in JSON fields like
 this illustrative example.
