@@ -12,7 +12,8 @@ from starlette.testclient import TestClient
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import Settings
-from herdr_mcp.herdr import AgentRecord, Herdr, HerdrError, RunResult
+from herdr_mcp.herdr.client import AgentRecord, Herdr, RunResult
+from herdr_mcp.herdr.exceptions import HerdrError
 from herdr_mcp.server import build_app
 
 SNAPSHOT_ARGS = ("herdr", "api", "snapshot")

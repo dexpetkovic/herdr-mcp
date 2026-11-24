@@ -28,7 +28,7 @@ from conftest import (
     tool_call,
 )
 
-from herdr_mcp.herdr import Herdr, RunResult
+from herdr_mcp.herdr.client import Herdr, RunResult
 from herdr_mcp.server import (
     SERVER_INSTRUCTIONS,
     AgentSummary,

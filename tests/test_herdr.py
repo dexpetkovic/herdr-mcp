@@ -11,7 +11,8 @@ from conftest import (
     succeeded,
 )
 
-from herdr_mcp.herdr import Herdr, HerdrError, RunResult, subprocess_runner
+from herdr_mcp.herdr.client import Herdr, RunResult, subprocess_runner
+from herdr_mcp.herdr.exceptions import HerdrError
 
 
 def test_snapshot_joins_agents_to_workspaces_and_tabs(snapshot_herdr):
