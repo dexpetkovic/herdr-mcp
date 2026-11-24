@@ -6,15 +6,15 @@ Herdr-MCP is an opinionated MCP server for [herdr](https://herdr.dev) agents. It
 
 | Tool | What it does | Changes anything |
 |---|---|---|
-| `list_agents` | Lists each orchestrator's target, kind, status and workspace. | No |
-| `get_agent_activity` | Reads the visible screen of one agent. | No |
-| `send_message` | Sends your words to a named orchestrator. The result includes the orchestrator's visible screen when herdr can read it. | Yes |
+| `list_agents` | This tool lists each orchestrator's target, kind, status and workspace. | No |
+| `get_agent_activity` | This tool reads one agent's visible screen. | No |
+| `send_message` | This tool sends your words to a named orchestrator. The result includes the orchestrator's visible screen when herdr can read it. | Yes |
 
 ## Requirements
 
 herdr-mcp needs herdr on the same machine, Python 3.11 or newer, and `uv`. This release targets
-herdr 0.9.5. The container image installs that version by default. The herdr CLI must match the version of
-the running herdr server, as [Upgrading herdr](docs/deploy.md#upgrading-herdr) explains.
+herdr 0.9.5. The container image installs that version by default. The herdr CLI must match the
+version of the running herdr server, as [Upgrading herdr](docs/deploy.md#upgrading-herdr) explains.
 
 ## Install
 
@@ -32,8 +32,8 @@ setup, install directly from GitHub.
 uv tool install git+https://github.com/dexpetkovic/herdr-mcp
 ```
 
-The [deployment guide](docs/deploy.md) covers a Mac, Coolify and any other Linux server. It
-explains how to give herdr-mcp a public HTTPS URL. It also shows how to connect Grok.
+The [deployment guide](docs/deploy.md) covers local setup on a Mac. It shows how to expose
+herdr-mcp over HTTPS on Coolify or another Linux server. It also shows how to connect Grok.
 
 ## Run as a systemd user service
 
@@ -42,7 +42,8 @@ as the user that runs herdr.
 
 1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run the later steps in that
    checkout.
-2. Create the environment file with mode 0600. An existing file keeps its contents. The commands set its permissions to 0600.
+2. Create the environment file. These commands set its permissions to 0600. An existing file keeps
+   its contents.
 
    ```sh
    mkdir -p ~/.config/herdr-mcp
@@ -50,8 +51,8 @@ as the user that runs herdr.
    chmod 600 ~/.config/herdr-mcp/env
    ```
 
-   Edit `~/.config/herdr-mcp/env`. Put one `KEY=value` line in the file for each setting. Replace `<token>` with a token from
-   the command at the top of [docs/deploy.md](docs/deploy.md).
+   Edit `~/.config/herdr-mcp/env`. Put one `KEY=value` line in the file for each setting. Replace
+   `<token>` with a token from the command at the top of [docs/deploy.md](docs/deploy.md).
 
    ```text
    HERDR_MCP_TOKEN=<token>
@@ -80,7 +81,7 @@ as the user that runs herdr.
    ```
 
 4. Run `loginctl enable-linger` once. The service then starts at boot without a login.
-5. Run `journalctl --user -u herdr-mcp` if the service stops or a request fails. systemd logs a
+5. Run `journalctl --user -u herdr-mcp` if the service is inactive or a request fails. systemd logs a
    missing environment file or executable in that journal. herdr-mcp logs a line that names an
    invalid setting in the same journal.
 6. Connect a client on the same host to `http://127.0.0.1:8765/mcp` with the header
@@ -102,15 +103,15 @@ The project lives in the `dexpetkovic/herdr-mcp` repository. The server reports 
    **Settings**, then **Customize**.
 
 [Connect Grok](docs/deploy.md#connect-grok) in the deployment guide shows how to check the endpoint.
-Grok can keep an old tool list. The guide shows how to recreate the connector with a new `?v=N`
-value.
+Grok can keep an old tool list. The same section shows how to recreate the connector with a new
+`?v=N` value.
 [Troubleshooting](docs/deploy.md#troubleshooting) covers failed requests.
 
 ## Use it in your Tesla
 
 Tesla's [Grok support page](https://www.tesla.com/support/grok) says Grok in the car uses the
 connectors from your signed-in Grok account. In the car, sign in to the Grok account where you
-added the connector.
+added the connector. Nothing else needs to be set up in the car.
 
 Tesla Support lists the vehicle requirements for Grok and Connectors. It covers the software
 version, processor and connectivity.
@@ -138,9 +139,10 @@ name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`
 
 `list_agents` lists the orchestrators in that layout. `send_message` sends only to an orchestrator
 by its herdr agent name. Set that name with `herdr agent rename`. The server tells the client to
-send your words unchanged. Before sending, the tool checks that the orchestrator is idle or done.
+send your words unchanged. `send_message` sends only if its final status check reports that the
+orchestrator is idle or done.
 
-The server wraps your words in one line before it sends them. The orchestrator receives this text.
+The server sends the orchestrator your words with the following instructions, in one line.
 
 ```
 Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.
@@ -150,9 +152,9 @@ Reply with the option number in another message, such as "option 2". Grok sends 
 same orchestrator name. Answer Claude Code's permission prompts at the computer.
 
 `send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
-orchestrator's visible screen when herdr can read it. The screen may show an earlier
-answer or just the end of a long answer. When the turn takes longer, the tool says that the message may have been sent. Read the
-screen later with `get_agent_activity`.
+orchestrator's visible screen when herdr can read it. The screen may show an earlier answer or just
+the end of a long answer. If the wait times out, `send_message` can report that the message may have
+been sent. Check the same orchestrator with `get_agent_activity` before you send again.
 
 - The orchestrator can start working between the status check and delivery.
 - The agent can move to another tab or workspace before delivery.
