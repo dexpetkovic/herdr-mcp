@@ -1,10 +1,6 @@
-# herdr-mcp
+# Grok-ready Herdr-MCP for your Tesla
 
-`herdr-mcp` is an MCP server for [herdr](https://herdr.dev) agents. A voice client such as Grok can
-list your orchestrator agents and read one agent's visible screen. It can also send your words to
-an orchestrator. After herdr reports a settled state, `send_message` returns the orchestrator's
-visible screen when herdr can read it. This project is the repository `dexpetkovic/herdr-mcp`. Its
-MCP server name is `herdr`, which a client shows as `serverInfo.name`.
+Herdr-MCP is an opinionated MCP server for [herdr](https://herdr.dev) agents. It contains out-of-the-box configuration that enables you to connect your Tesla Grok AI assistant to your agentic setup in herdr. Grok can list your orchestrator agents and read one agent's visible screen. It can also send your words to an orchestrator. This enables you to steer the development while driving, so you are always up to date with what your agents are doing.
 
 ## Tools
 
@@ -89,6 +85,44 @@ as the user that runs herdr.
 6. Connect a client on the same host to `http://127.0.0.1:8765/mcp` with the header
    `Authorization: Bearer <token>`. The guide documents the public path for the container, in [Expose it through one public
    path](docs/deploy.md#expose-it-through-one-public-path).
+
+## Connect Grok
+
+This project is the repository `dexpetkovic/herdr-mcp`. The server reports `herdr` as its
+`serverInfo.name`. Follow these steps to connect Grok to it.
+
+1. Deploy herdr-mcp and expose it through one public path, as [docs/deploy.md](docs/deploy.md)
+   explains.
+2. Open [grok.com/connectors](https://grok.com/connectors) and add a custom connector. Enter the
+   public server URL, such as `https://mcp.example.com/mcp`.
+3. Add the header `Authorization: Bearer <token>` to the connector. `<token>` is the value of
+   `HERDR_MCP_TOKEN`.
+4. Paste the text from [docs/grok-instructions.md](docs/grok-instructions.md) into Grok under
+   **Settings**, then **Customize**.
+
+[Connect Grok](docs/deploy.md#connect-grok) in the deployment guide shows how to check the endpoint.
+It also shows how to recreate the connector with a new `?v=N` value when Grok keeps a stale tool list.
+[Troubleshooting](docs/deploy.md#troubleshooting) covers failed requests.
+
+## Use it in your Tesla
+
+Tesla's [Grok support page](https://www.tesla.com/support/grok) says that Grok in the car uses the
+connectors of the Grok account it is signed in to. In the car, sign in to the Grok account where you
+added the connector.
+
+The same page lists the vehicle requirements for Grok and Connectors. They cover the software
+version, the processor and the connectivity.
+
+Talk to Grok in the car by voice. For example, say "ask my orchestrator in herdr-mcp what it is
+working on".
+
+Grok in a Tesla Model Y has listed the orchestrators through this connector. The full voice round
+trip from the car has not been recorded yet.
+
+## Test without a car
+
+The Grok mobile app and grok.com use the same connector. You can test every tool there first.
+Voice mode in the Grok mobile app comes closest to the car.
 
 ## Privacy
 
