@@ -68,7 +68,8 @@ Coolify's GitHub App source.
 
 The Compose file mounts the herdr socket directory read-only at `/herdr`. The read-only mount is
 enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the Compose
-file publishes no port. Coolify's dashboard uses port 8000, so herdr-mcp listens on 8765.
+file publishes no port. The Coolify dashboard uses port 8000 by default. herdr-mcp listens on port
+8765.
 
 Create the resource with these steps.
 
@@ -302,7 +303,7 @@ OAuth connector.
 |---|---|---|
 | A request that sends the token gets `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
 | A request gets `421`. | The Host header is neither a loopback host nor `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
-| Traefik returns `504`. | A host firewall such as UFW may drop traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
+| Traefik returns `504`. | A host firewall such as UFW may drop traffic from the proxy's bridge network to a host process. | Run herdr-mcp as a container on the proxy's network. |
 | The browser reports too many redirects. | Cloudflare uses the **Flexible** encryption mode for the hostname. | Set **Full (strict)** for the hostname. |
 | Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Meet requirement 2 in [Expose it through one public path](#expose-it-through-one-public-path). |
 | herdr reports a permission error on `herdr.sock`. | herdr-mcp runs as a user that does not own the socket. | Run it with the uid and gid that `id -u` and `id -g` print for the herdr user. |
@@ -314,8 +315,8 @@ OAuth connector.
 | Grok shows old tools or old tool descriptions. | Grok may have cached the tool list for that URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
 | Grok answers about a different herdr-mcp project. | Grok may have searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
 
-The container log shows what a healthy exchange looks like. In one example, a single Grok question
-produced five requests, all from the proxy's address. `initialize` returned 200. The initialized
+In one example, a single Grok question produced five requests in the container log. All came from
+the proxy's address. `initialize` returned 200. The initialized
 notification returned 202. `GET /mcp` opened the server stream and returned 200. The tool request
 returned 200. `DELETE /mcp` returned 200.
 
