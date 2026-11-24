@@ -6,7 +6,7 @@ services:
     # herdr's socket is mode 0600, so the container runs as the socket owner's uid.
     user: "${HERDR_UID:?}:${HERDR_GID:?}"
     volumes:
-      # Coolify reads a variable bind source only in the long syntax.
+      # Coolify treats a variable source without a default path as a bind only in long syntax.
       - type: bind
         source: ${HERDR_CONFIG_DIR:-}
         target: /herdr
