@@ -132,24 +132,26 @@ that runs herdr. Treat the token like that user's password.
 
 Keep the token out of chat logs and screenshots.
 
-To rotate the token, set a new `HERDR_MCP_TOKEN` and restart herdr-mcp the way you run it. The
-server reads the token only when it starts.
+To rotate the token, choose a new one and apply it with the steps for your setup. The server reads
+the token only when it starts.
 
 - The systemd user service reads the token from `~/.config/herdr-mcp/env`. Edit that file, then run
   `systemctl --user restart herdr-mcp`.
 - On a Mac, herdr-mcp reads the token from the shell that starts it. Stop the server, export the new
   token in that shell and start it again, as [On a Mac](docs/deploy.md#on-a-mac) shows.
 - On Coolify, change the value under **Environment Variables** and redeploy.
-- With plain Docker, a restart keeps the old token. Remove the container with
-  `docker rm -f herdr-mcp`. Start it again with the `docker run` command in [On any other Linux
-  server](docs/deploy.md#on-any-other-linux-server).
+- With plain Docker, a restart keeps the old token. Export the new token in your shell first. Remove
+  the container with `docker rm -f herdr-mcp`. Start it again with the `docker run` command in [On
+  any other Linux server](docs/deploy.md#on-any-other-linux-server), with the same `-p` or
+  `--network` option as before.
 
-Then put the new token in the connector's `Authorization` header. The `initialize` probe in
-[Connect Grok](docs/deploy.md#connect-grok) returns `200` with the new token and `401` with the old
-one.
+Then put the new token in the connector's `Authorization` header. Check the change with the
+`initialize` probe in [Connect Grok](docs/deploy.md#connect-grok). Point it at your MCP URL, such as
+`http://127.0.0.1:8765/mcp` for a local setup. Run it once with `HERDR_MCP_TOKEN` set to the new
+token, which returns `200`. Run it again with the old token, which returns `401`.
 
-The connected client reads the visible terminal output of every agent it reads. Connect only
-clients you trust with that output.
+A connected client can read your agents' visible terminal output. Connect only clients you trust
+with that output.
 
 ## Limits of send_message
 

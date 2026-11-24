@@ -210,9 +210,9 @@ because the app records its webhook URL when you create it.
 6. When you create the GitHub App, choose **Use a custom endpoint**. Enter
    `https://coolify.example.com` as the base URL. Cloudflare's proxy does not forward port 8000.
 
-Opening port 8000 to GitHub's webhook IP ranges would send payloads over plain HTTP, so this guide
-uses the HTTPS hostname. Coolify step 13 confirms a delivery afterwards. If Cloudflare Access
-protects the dashboard hostname, its policy must let the GitHub App's webhook through.
+Use the HTTPS hostname for webhook delivery. Step 13 of [On Coolify](#on-coolify) checks a delivery
+after the deploy. If Cloudflare Access protects the dashboard hostname, its policy must let the
+GitHub App's webhook through.
 
 Then create a proxied DNS record for `mcp.example.com` that points at the server, as [Cloudflare's
 DNS guide](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/)
@@ -277,15 +277,14 @@ Add the connector.
    then **Customize**.
 5. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
-The two probes test the endpoint without touching the herdr socket. The question in step 5 is the
-end-to-end check, because Grok must call herdr through the server to answer it.
+The two probes test the endpoint without touching the herdr socket. The question in step 5 checks
+whether Grok can read live agent state through herdr-mcp.
 
-A connector added at grok.com also works in the Grok mobile app when the app is signed in to the
-same account. This is observed behaviour, not a documented guarantee. [Use it in your
-Tesla](../README.md#use-it-in-your-tesla) shows how to use the connector in the car.
+In testing, the Grok mobile app used a connector added at grok.com after the app signed in to the
+same account. [Use it in your Tesla](../README.md#use-it-in-your-tesla) shows how to use the
+connector in the car.
 
-Several public projects are named herdr-mcp. This project is the repository
-`dexpetkovic/herdr-mcp`. Its MCP server name is `herdr`. Its tools are `list_agents`,
+This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server name is `herdr`. Its tools are `list_agents`,
 `get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
 the client to answer from this live server.
 
@@ -312,12 +311,13 @@ OAuth connector.
 | The container reports agents from another herdr session. | The container reads only `herdr.sock` in the mounted directory. | Check that the mounted directory holds the socket of the session you want to expose. |
 | Naming an agent fails because the name is taken. | Agent names are global per herdr server. | Give the agent a name that no other agent on the server uses. |
 | The domain also answers on `www.`. | Coolify added a `www.` copy of the domain. | Remove it under **Public access**. |
-| Grok shows old tools or old tool descriptions. | Grok keeps a connector's tool list, even after you recreate it with the same URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
-| Grok answers about a different herdr-mcp project. | Grok searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
+| Grok shows old tools or old tool descriptions. | Grok may have cached the tool list for that URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |
+| Grok answers about a different herdr-mcp project. | Grok may have searched the web instead of calling the connector. | Check that the connector is enabled, and ask Grok to call `list_agents`. |
 
-One Grok question can produce five requests in the container log, all from the proxy's address.
-`initialize` returns 200. The initialized notification returns 202. `GET /mcp` opens the
-server stream and returns 200. The tool request returns 200. `DELETE /mcp` returns 200.
+The container log shows what a healthy exchange looks like. In one example, a single Grok question
+produced five requests, all from the proxy's address. `initialize` returned 200. The initialized
+notification returned 202. `GET /mcp` opened the server stream and returned 200. The tool request
+returned 200. `DELETE /mcp` returned 200.
 
 herdr-mcp logs a separate `tool call` record for each tool call. The record ends in JSON fields like
 this illustrative example.
