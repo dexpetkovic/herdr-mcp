@@ -236,8 +236,8 @@ Hostname mcp.example.com does match certificate
 ```
 
 When the reverse proxy runs in a container, run herdr-mcp as a container on the proxy's network. A
-host firewall such as UFW can drop traffic from the proxy's bridge network to a host process. Traefik
-then answers 504 after 30 seconds.
+host firewall such as UFW can drop traffic from the proxy's bridge network to a host process.
+Traefik can then return `504` because it cannot connect to the host process.
 
 Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. The MCP SDK answers 421 to a Host header outside
 its allowed list. The list holds the loopback hosts and `HERDR_MCP_PUBLIC_HOST`.
@@ -280,8 +280,8 @@ Add the connector.
 The two probes test the endpoint without touching the herdr socket. The question in step 5 checks
 whether Grok can read live agent state through herdr-mcp.
 
-In testing, the Grok mobile app used a connector added at grok.com after the app signed in to the
-same account. [Use it in your Tesla](../README.md#use-it-in-your-tesla) shows how to use the
+In my testing, the Grok mobile app used a connector added at grok.com after I signed in to the same
+account in the app. [Use it in your Tesla](../README.md#use-it-in-your-tesla) shows how to use the
 connector in the car.
 
 This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server name is `herdr`. Its tools are `list_agents`,
@@ -289,10 +289,10 @@ This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server nam
 the client to answer from this live server.
 
 Grok can keep a connector's old tool list after the server changes, even when you recreate the
-connector with the same URL. Recreate it with a new query string instead, such as
-`https://mcp.example.com/mcp?v=2`, and raise the number each time. The server routes that URL to the
-same endpoint, and the query string plays no part in authorization. Keep the bearer header when you
-recreate the connector. [xai-org/plugin-marketplace issue
+connector with the same URL. Recreate the connector with a new `v` value instead, such as
+`https://mcp.example.com/mcp?v=2`, and raise the number each time. The new URL reaches the same
+endpoint. The query string plays no part in authorization. Keep the bearer header when you recreate
+the connector. [xai-org/plugin-marketplace issue
 1402](https://github.com/xai-org/plugin-marketplace/issues/1402) reports stale tool lists for an
 OAuth connector.
 
@@ -302,7 +302,7 @@ OAuth connector.
 |---|---|---|
 | A request that sends the token gets `401`. | The `Authorization` header is missing or carries another token. | Send `Authorization: Bearer <token>` with the exact value of `HERDR_MCP_TOKEN`. |
 | A request gets `421`. | The Host header is neither a loopback host nor `HERDR_MCP_PUBLIC_HOST`. | Set `HERDR_MCP_PUBLIC_HOST` to the public hostname. Make the proxy forward the Host header unchanged. |
-| Traefik returns `504` after 30 seconds. | A host firewall such as UFW may drop traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
+| Traefik returns `504`. | A host firewall such as UFW may drop traffic from the proxy's network to a host process. | Run herdr-mcp as a container on the proxy's network. |
 | The browser reports too many redirects. | Cloudflare uses the **Flexible** encryption mode for the hostname. | Set **Full (strict)** for the hostname. |
 | Cloudflare returns `526`. | The origin presents no certificate that Cloudflare trusts for the hostname. | Meet requirement 2 in [Expose it through one public path](#expose-it-through-one-public-path). |
 | herdr reports a permission error on `herdr.sock`. | herdr-mcp runs as a user that does not own the socket. | Run it with the uid and gid that `id -u` and `id -g` print for the herdr user. |

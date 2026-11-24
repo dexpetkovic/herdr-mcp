@@ -147,8 +147,9 @@ the token only when it starts.
 
 Then put the new token in the connector's `Authorization` header. Check the change with the
 `initialize` probe in [Connect Grok](docs/deploy.md#connect-grok). Point it at your MCP URL, such as
-`http://127.0.0.1:8765/mcp` for a local setup. Run it once with `HERDR_MCP_TOKEN` set to the new
-token, which returns `200`. Run it again with the old token, which returns `401`.
+`http://127.0.0.1:8765/mcp` for a local setup. In the shell where you run curl, set
+`HERDR_MCP_TOKEN` to the new token. The probe should return `200`. Repeat with the old token and
+look for `401`.
 
 A connected client can read your agents' visible terminal output. Connect only clients you trust
 with that output.
