@@ -1,4 +1,4 @@
-"""The error that every failed herdr call raises."""
+"""The error type of the herdr connector."""
 
 
 class HerdrError(Exception):
