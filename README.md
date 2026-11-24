@@ -1,24 +1,20 @@
-# herdr-mcp
+# Grok-ready Herdr-MCP for your Tesla
 
-`herdr-mcp` is an MCP server for [herdr](https://herdr.dev) agents. A voice client such as Grok can
-list your orchestrator agents and read one agent's visible screen. It can also send your words to
-an orchestrator. After herdr reports a settled state, `send_message` returns the orchestrator's
-visible screen when herdr can read it. This project is the repository `dexpetkovic/herdr-mcp`. Its
-MCP server name is `herdr`, which a client shows as `serverInfo.name`.
+Herdr-MCP is an opinionated MCP server for [herdr](https://herdr.dev) agents. It contains out-of-the-box configuration that enables you to connect your Tesla Grok AI assistant to your agentic setup in herdr. Grok can list your orchestrator agents and read one agent's visible screen. It can also send your words to an orchestrator. This enables you to steer the development while driving, so you are always up to date with what your agents are doing.
 
 ## Tools
 
 | Tool | What it does | Changes anything |
 |---|---|---|
-| `list_agents` | It lists your orchestrator agents with their target, kind, status and workspace. | No |
-| `get_agent_activity` | It reads what one agent's screen shows now. | No |
-| `send_message` | It sends your words to a named orchestrator and returns the visible screen when herdr can read it. | Yes |
+| `list_agents` | This tool lists each orchestrator's target, kind, status and workspace. | No |
+| `get_agent_activity` | This tool reads one agent's visible screen. | No |
+| `send_message` | This tool sends your words to a named orchestrator. The result includes the orchestrator's visible screen when herdr can read it. | Yes |
 
 ## Requirements
 
 herdr-mcp needs herdr on the same machine, Python 3.11 or newer, and `uv`. This release targets
-herdr 0.9.5, the version that the image installs by default. The herdr CLI must match the version of
-the running herdr server, as [Upgrading herdr](docs/deploy.md#upgrading-herdr) explains.
+herdr 0.9.5. The container image installs that version by default. The herdr CLI must match the
+version of the running herdr server, as [Upgrading herdr](docs/deploy.md#upgrading-herdr) explains.
 
 ## Install
 
@@ -28,25 +24,26 @@ Install herdr-mcp from a checkout of the repository.
 uv tool install .
 ```
 
-The repository is private. A checkout needs access from its owner. When your Git has a credential
-helper that supplies a GitHub credential with access to the repository, you can also install
-without a checkout.
+The repository is private. Ask the repository owner for read access before you clone it. A Git
+credential helper can supply a GitHub credential with read access to the repository. With that
+setup, install directly from GitHub.
 
 ```sh
 uv tool install git+https://github.com/dexpetkovic/herdr-mcp
 ```
 
-[docs/deploy.md](docs/deploy.md) explains how to run herdr-mcp on a Mac, on Coolify or in a
-container, how to expose it through one public path and how to connect Grok.
+The [deployment guide](docs/deploy.md) covers local setup on a Mac. It shows how to expose
+herdr-mcp over HTTPS on Coolify or another Linux server. It also shows how to connect Grok.
 
 ## Run as a systemd user service
 
 `contrib/herdr-mcp.service` keeps herdr-mcp running on a Linux host without Docker. Run these steps
 as the user that runs herdr.
 
-1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run the later steps in that
-   checkout.
-2. Create the environment file with mode 0600. The commands keep an existing file and fix its mode.
+1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run these steps from the
+   repository checkout.
+2. Create the environment file. These commands set its permissions to 0600. An existing file keeps
+   its contents.
 
    ```sh
    mkdir -p ~/.config/herdr-mcp
@@ -54,8 +51,8 @@ as the user that runs herdr.
    chmod 600 ~/.config/herdr-mcp/env
    ```
 
-   Edit the file. It holds one `KEY=value` line per setting. Replace `<token>` with a token from
-   the command at the top of [docs/deploy.md](docs/deploy.md).
+   Edit `~/.config/herdr-mcp/env`. Put one `KEY=value` line in the file for each setting. Replace
+   `<token>` with a token from the command at the top of [docs/deploy.md](docs/deploy.md).
 
    ```text
    HERDR_MCP_TOKEN=<token>
@@ -63,10 +60,11 @@ as the user that runs herdr.
    HERDR_MCP_PORT=8765
    ```
 
-   The host line keeps the listener on the loopback interface, whatever the user manager's
-   environment holds. The port line fixes the port. Add `HERDR_BIN=<path to herdr>` when herdr is not in `~/.local/bin` or `/usr/local/bin`.
-   Add `HERDR_SESSION=<name>` to report a herdr session other than the default. The unit clears
-   `HERDR_SOCKET_PATH`, so `HERDR_SESSION` takes effect.
+   `HERDR_MCP_HOST` keeps the server on loopback regardless of the systemd user manager's
+   environment. `HERDR_MCP_PORT` sets the listening port to 8765. Add `HERDR_BIN=<path to herdr>`
+   when herdr is not in `~/.local/bin` or `/usr/local/bin`. Set `HERDR_SESSION=<name>` to read
+   agents from a herdr session other than the default. The unit clears `HERDR_SOCKET_PATH` so that
+   `HERDR_SESSION` takes effect.
 3. Copy the unit.
 
    ```sh
@@ -83,48 +81,86 @@ as the user that runs herdr.
    ```
 
 4. Run `loginctl enable-linger` once. The service then starts at boot without a login.
-5. Read `journalctl --user -u herdr-mcp` when the service is not active or a request fails. systemd
-   logs a missing environment file or executable there. herdr-mcp logs a line there that names an
-   invalid setting.
+5. Run `journalctl --user -u herdr-mcp` if the service is inactive or a request fails. systemd logs a
+   missing environment file or executable in that journal. herdr-mcp logs a line that names an
+   invalid setting in the same journal.
 6. Connect a client on the same host to `http://127.0.0.1:8765/mcp` with the header
-   `Authorization: Bearer <token>`. The guide documents the public path for the container, in [Expose it through one public
-   path](docs/deploy.md#expose-it-through-one-public-path).
+   `Authorization: Bearer <token>`. For public HTTPS access to the container, see [Expose it through
+   one public path](docs/deploy.md#expose-it-through-one-public-path).
+
+## Connect Grok
+
+The project lives in the `dexpetkovic/herdr-mcp` repository. The server reports `herdr` as its
+`serverInfo.name`.
+
+1. Deploy herdr-mcp using the [deployment guide](docs/deploy.md). Give the server a public HTTPS
+   URL.
+2. Open [grok.com/connectors](https://grok.com/connectors) and add a custom connector. Enter the
+   public HTTPS endpoint ending in `/mcp`, such as `https://mcp.example.com/mcp`.
+3. Add the header `Authorization: Bearer <token>` to the connector. `<token>` is the value of
+   `HERDR_MCP_TOKEN`.
+4. Paste the text from [docs/grok-instructions.md](docs/grok-instructions.md) into Grok under
+   **Settings**, then **Customize**.
+
+[Connect Grok](docs/deploy.md#connect-grok) in the deployment guide shows how to check the endpoint.
+Grok can keep an old tool list. The same section shows how to recreate the connector with a new
+`?v=N` value.
+[Troubleshooting](docs/deploy.md#troubleshooting) covers failed requests.
+
+## Use it in your Tesla
+
+Tesla's [Grok support page](https://www.tesla.com/support/grok) says Grok in the car uses the
+connectors from your signed-in Grok account. In the car, sign in to the Grok account where you
+added the connector. Grok picks up the connector automatically after you sign in.
+
+Tesla Support lists the vehicle requirements for Grok and Connectors. It covers the software
+version, processor and connectivity.
+
+Speak to Grok in the car. For example, say "ask my orchestrator in herdr-mcp what it is
+working on".
+
+Grok in a Tesla Model Y reaches this connector and calls its tools.
+
+## Test without a car
+
+The Grok mobile app and grok.com use the same connector. You can test every tool in the Grok mobile
+app or on grok.com. The mobile app's voice mode is the closest match for talking to Grok in the car.
 
 ## Privacy
 
-The connected client receives the terminal output of every agent it reads. Connect only a client
-that you trust with what your agents show.
+The connected client receives the terminal output of every agent it reads. Connect only clients
+you trust with your agents' terminal output.
 
 ## Limits of send_message
 
-herdr-mcp supports one layout. Each project has one workspace on its main checkout, and workspace
-labels tell the projects apart. Tab 1 of that workspace holds only the orchestrator. A reviewer's
+herdr-mcp supports one layout. Give each project one workspace on its main checkout. Use workspace
+labels to distinguish projects. Tab 1 of that workspace holds only the orchestrator. A reviewer's
 name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`.
 
-`list_agents` lists only the agents in the orchestrator position. `send_message` sends only to a
-named orchestrator. Name it with `herdr agent rename`. The server tells the client to send your
-words unchanged. The tool sends only when the orchestrator is idle or done at its check just before
-sending.
+`list_agents` lists the orchestrators in that layout. `send_message` sends only to a named
+orchestrator in that layout. Set the orchestrator's name with `herdr agent rename`. The server tells
+the client to send your words unchanged. `send_message` sends only if its final status check reports
+that the orchestrator is idle or done.
 
-The server wraps your words in one line before it sends them. The orchestrator receives this text.
+The server sends your words and these instructions together in a single line.
 
 ```
 Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.
 ```
 
-You answer the options with another message, such as "option 2". Grok sends that answer to the
-same orchestrator name. Claude Code's own permission prompts still need the computer.
+Reply with the option number in another message, such as "option 2". Grok sends that reply to the
+same orchestrator name. Answer Claude Code's permission prompts at the computer.
 
 `send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
-orchestrator's visible screen when herdr can read it. The screen can still show an earlier answer, or only the end of a
-long one. When the turn takes longer, the tool says that the message may have been sent. Read the
-screen later with `get_agent_activity`.
+orchestrator's visible screen when herdr can read it. The screen may show an earlier answer or just
+the end of a long answer. If the wait times out, `send_message` can report that the message may have
+been sent. Check the same orchestrator with `get_agent_activity` before you send again.
 
-- The orchestrator can start working between that check and the delivery.
-- The agent can move to another tab or workspace, or lose its name to a new agent, before herdr
-  delivers the message.
+- The orchestrator can start working between the status check and delivery.
+- The agent can move to another tab or workspace before delivery.
+- Another agent can take the target name before delivery.
 
 ## License
 
-herdr-mcp is licensed under the MIT license. The container image bundles herdr, which is licensed
-under Apache-2.0.
+herdr-mcp is licensed under the MIT license. The container image bundles herdr. Herdr uses the
+Apache-2.0 license.
