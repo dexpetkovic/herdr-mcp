@@ -40,8 +40,8 @@ herdr-mcp over HTTPS on Coolify or another Linux server. It also shows how to co
 `contrib/herdr-mcp.service` keeps herdr-mcp running on a Linux host without Docker. Run these steps
 as the user that runs herdr.
 
-1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run the later steps in that
-   checkout.
+1. Install herdr-mcp from a checkout, as [Install](#install) shows. Run these steps from the
+   repository checkout.
 2. Create the environment file. These commands set its permissions to 0600. An existing file keeps
    its contents.
 
@@ -85,8 +85,8 @@ as the user that runs herdr.
    missing environment file or executable in that journal. herdr-mcp logs a line that names an
    invalid setting in the same journal.
 6. Connect a client on the same host to `http://127.0.0.1:8765/mcp` with the header
-   `Authorization: Bearer <token>`. The deployment guide describes public HTTPS access for the
-   container in [Expose it through one public path](docs/deploy.md#expose-it-through-one-public-path).
+   `Authorization: Bearer <token>`. For public HTTPS access to the container, see [Expose it through
+   one public path](docs/deploy.md#expose-it-through-one-public-path).
 
 ## Connect Grok
 
@@ -111,7 +111,7 @@ Grok can keep an old tool list. The same section shows how to recreate the conne
 
 Tesla's [Grok support page](https://www.tesla.com/support/grok) says Grok in the car uses the
 connectors from your signed-in Grok account. In the car, sign in to the Grok account where you
-added the connector. Nothing else needs to be set up in the car.
+added the connector. Grok picks up the connector automatically after you sign in.
 
 Tesla Support lists the vehicle requirements for Grok and Connectors. It covers the software
 version, processor and connectivity.
@@ -137,12 +137,12 @@ herdr-mcp supports one layout. Give each project one workspace on its main check
 labels to distinguish projects. Tab 1 of that workspace holds only the orchestrator. A reviewer's
 name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`.
 
-`list_agents` lists the orchestrators in that layout. `send_message` sends only to an orchestrator
-by its herdr agent name. Set that name with `herdr agent rename`. The server tells the client to
-send your words unchanged. `send_message` sends only if its final status check reports that the
-orchestrator is idle or done.
+`list_agents` lists the orchestrators in that layout. `send_message` requires the orchestrator's
+herdr agent name. Set that name with `herdr agent rename`. The server tells the client to send your
+words unchanged. `send_message` sends only if its final status check reports that the orchestrator
+is idle or done.
 
-The server sends the orchestrator your words with the following instructions, in one line.
+The server sends your words and these instructions together in a single line.
 
 ```
 Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.
