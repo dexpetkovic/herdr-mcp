@@ -15,7 +15,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import ConfigError, Settings, load_settings
-from herdr_mcp.herdr import AgentRecord, Herdr, HerdrError, subprocess_runner
+from herdr_mcp.herdr.client import AgentRecord, Herdr, subprocess_runner
+from herdr_mcp.herdr.exceptions import HerdrError
 
 logger = logging.getLogger("herdr_mcp")
 
