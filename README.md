@@ -96,7 +96,7 @@ The project lives in the `dexpetkovic/herdr-mcp` repository. The server reports 
 1. Deploy herdr-mcp using the [deployment guide](docs/deploy.md). Give the server a public HTTPS
    URL.
 2. Open [grok.com/connectors](https://grok.com/connectors) and add a custom connector. Enter the
-   public server URL, such as `https://mcp.example.com/mcp`.
+   public HTTPS endpoint ending in `/mcp`, such as `https://mcp.example.com/mcp`.
 3. Add the header `Authorization: Bearer <token>` to the connector. `<token>` is the value of
    `HERDR_MCP_TOKEN`.
 4. Paste the text from [docs/grok-instructions.md](docs/grok-instructions.md) into Grok under
@@ -137,10 +137,10 @@ herdr-mcp supports one layout. Give each project one workspace on its main check
 labels to distinguish projects. Tab 1 of that workspace holds only the orchestrator. A reviewer's
 name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`.
 
-`list_agents` lists the orchestrators in that layout. `send_message` requires the orchestrator's
-herdr agent name. Set that name with `herdr agent rename`. The server tells the client to send your
-words unchanged. `send_message` sends only if its final status check reports that the orchestrator
-is idle or done.
+`list_agents` lists the orchestrators in that layout. `send_message` sends only to a named
+orchestrator in that layout. Set the orchestrator's name with `herdr agent rename`. The server tells
+the client to send your words unchanged. `send_message` sends only if its final status check reports
+that the orchestrator is idle or done.
 
 The server sends your words and these instructions together in a single line.
 
