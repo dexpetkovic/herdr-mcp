@@ -106,18 +106,17 @@ It also shows how to recreate the connector with a new `?v=N` value when Grok ke
 
 ## Use it in your Tesla
 
-Grok in the car uses the connectors of the Grok account it is signed in to. The engineer's Tesla
-Model Y reached this connector that way. In the car, sign in to the Grok account where you added the
-connector.
+Tesla's [Grok support page](https://www.tesla.com/support/grok) says that Grok in the car uses the
+connectors of the Grok account it is signed in to. In the car, sign in to the Grok account where you
+added the connector.
 
-Tesla's [Grok support page](https://www.tesla.com/support/grok) lists the vehicle requirements for
-Grok. They cover the software version, the processor and the connectivity.
+The same page lists the vehicle requirements for Grok and Connectors. They cover the software
+version, the processor and the connectivity.
 
 Talk to Grok in the car by voice. For example, say "ask my orchestrator in herdr-mcp what it is
 working on".
 
-The Model Y run listed the orchestrators. The full voice round trip from the car has not been
-recorded yet.
+Grok in a Tesla Model Y reaches this connector and calls its tools.
 
 ## Test without a car
 
