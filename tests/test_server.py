@@ -3,6 +3,7 @@ import logging
 import pytest
 from conftest import (
     EARLIER_AND_NEW_ANSWER,
+    FRAMED_BUSY_MESSAGE,
     FRAMED_LONGEST_MESSAGE,
     FRAMED_MESSAGE,
     FRAMED_QUOTED_MESSAGE,
@@ -246,6 +247,7 @@ def test_send_message_frames_the_words_and_returns_the_screen_after_the_turn_set
     assert result["structuredContent"] == {
         "target": "alpha",
         "sent": True,
+        "sent_while_busy": False,
         "screen": TRIMMED_EARLIER_AND_NEW_ANSWER,
         "waiting_on_dialog": False,
     }
@@ -276,8 +278,38 @@ def test_send_message_that_settles_on_a_dialog_survives_a_failed_screen_read(
     assert result["structuredContent"] == {
         "target": "alpha",
         "sent": True,
+        "sent_while_busy": False,
         "screen": None,
         "waiting_on_dialog": True,
+    }
+
+
+def test_send_message_to_a_busy_claude_orchestrator_sends_without_waiting(
+    snapshot_json, fake_runner
+):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json, status="working")),
+            prompt_args("alpha", FRAMED_BUSY_MESSAGE, wait=False): settled_as("working"),
+            screen_read_args("alpha"): RunResult(0, SCREEN_TEXT, ""),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner)) as (client, headers):
+        call = tool_call("send_message", {"agent": "alpha", "text": MESSAGE})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert runner.calls == [
+        SNAPSHOT_ARGS,
+        prompt_args("alpha", FRAMED_BUSY_MESSAGE, wait=False),
+        screen_read_args("alpha"),
+    ]
+    assert result["structuredContent"] == {
+        "target": "alpha",
+        "sent": True,
+        "sent_while_busy": True,
+        "screen": TRIMMED_SCREEN,
+        "waiting_on_dialog": False,
     }
 
 

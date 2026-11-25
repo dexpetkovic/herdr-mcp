@@ -15,7 +15,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import ConfigError, Settings, load_settings
-from herdr_mcp.herdr.client import AgentRecord, Herdr, subprocess_runner
+from herdr_mcp.herdr.client import CLAUDE_CODE_KIND, AgentRecord, Herdr, subprocess_runner
 from herdr_mcp.herdr.exceptions import HerdrError
 
 logger = logging.getLogger("herdr_mcp")
@@ -34,6 +34,10 @@ VOICE_MESSAGE_FRAME = (
     'Voice message from the engineer, relayed by Grok: "{text}". '
     "Reply in plain text and do not open a question dialog. "
     "If you need me to choose, list numbered options and end your turn."
+)
+BUSY_VOICE_MESSAGE_FRAME = (
+    VOICE_MESSAGE_FRAME
+    + " If you are in the middle of a task, finish it first unless this message asks you to stop."
 )
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
@@ -68,7 +72,10 @@ SERVER_INSTRUCTIONS = (
     "Call send_message with the same target name whose reply held the options. "
     "Do not read the answer back or ask for a workspace. "
     "If that target is gone or refuses the message, say so and send it nowhere else. "
-    "send_message waits for the orchestrator's turn to settle and returns its visible screen. "
+    "send_message returns the orchestrator's visible screen. "
+    "It waits for the turn to settle unless sent_while_busy is true. "
+    "When sent_while_busy is true, say the message was sent while the orchestrator was busy. "
+    "Describe only what the screen shows, and do not present it as the answer. "
     "Summarise screen in a few spoken sentences as what the orchestrator's screen shows. "
     "When the screen does not show an answer to the user's message, say what it does show. "
     "When waiting_on_dialog is true or the send is refused because the orchestrator is "
@@ -112,6 +119,7 @@ class AgentActivity(BaseModel):
 class SentMessage(BaseModel):
     target: str
     sent: bool
+    sent_while_busy: bool
     screen: str | None
     waiting_on_dialog: bool
 
@@ -217,13 +225,14 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             except HerdrError as error:
                 _log_herdr_error(error)
                 return _spoken_error(error)
-            refusal = _orchestrator_refusal(agent, records)
-            if refusal is not None:
-                return _error_result(refusal)
+            orchestrator = _sendable_orchestrator_or_refusal(agent, records)
+            if isinstance(orchestrator, str):
+                return _error_result(orchestrator)
+            sent_while_busy = orchestrator.status == "working"
+            frame = BUSY_VOICE_MESSAGE_FRAME if sent_while_busy else VOICE_MESSAGE_FRAME
+            wait_ms = None if sent_while_busy else REPLY_WAIT_MS
             try:
-                settled_status = herdr.prompt(
-                    agent, VOICE_MESSAGE_FRAME.format(text=text), REPLY_WAIT_MS
-                )
+                reported_status = herdr.prompt(agent, frame.format(text=text), wait_ms)
             except HerdrError as error:
                 _log_herdr_error(error)
                 if error.code == "agent_not_found":
@@ -238,8 +247,9 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             return SentMessage(
                 target=agent,
                 sent=True,
+                sent_while_busy=sent_while_busy,
                 screen=screen,
-                waiting_on_dialog=settled_status == "blocked",
+                waiting_on_dialog=not sent_while_busy and reported_status == "blocked",
             )
         finally:
             _log_tool_call("send_message", outcome, started)
@@ -285,7 +295,7 @@ def _is_agent_target(value: str) -> bool:
     return 0 < len(value) <= MAX_TARGET_LENGTH and not value.startswith("-") and "\0" not in value
 
 
-def _orchestrator_refusal(name: str, records: list[AgentRecord]) -> str | None:
+def _sendable_orchestrator_or_refusal(name: str, records: list[AgentRecord]) -> AgentRecord | str:
     record = next((record for record in records if record.name == name), None)
     if record is None:
         return f"No agent named {name} is running."
@@ -293,9 +303,11 @@ def _orchestrator_refusal(name: str, records: list[AgentRecord]) -> str | None:
         return "That tab has more than one agent, so I did not send the message."
     if not is_orchestrator(record):
         return "I can only send messages to an orchestrator agent."
+    if record.status == "working" and record.kind == CLAUDE_CODE_KIND:
+        return record
     if record.status not in READY_STATUSES:
         return STATUS_REFUSALS.get(record.status, READINESS_UNKNOWN)
-    return None
+    return record
 
 
 def _spoken_error(error: HerdrError) -> CallToolResult:

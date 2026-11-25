@@ -13,6 +13,8 @@ TIMEOUT_SECONDS = 10.0
 PROMPT_TIMEOUT_MARGIN_SECONDS = 5.0
 INVALID_SYNTAX_EXIT_CODE = 2
 SNAPSHOT_ARGS = ["api", "snapshot"]
+SETTLED_STATUSES = frozenset({"idle", "done", "blocked"})
+CLAUDE_CODE_KIND = "claude"
 
 
 @dataclass(frozen=True)
@@ -69,12 +71,20 @@ class Herdr:
     def read_screen(self, target: str) -> str:
         return self._query(["agent", "read", target, "--source", "visible"])
 
-    def prompt(self, name: str, text: str, wait_ms: int) -> str:
-        """Waits up to `wait_ms` for herdr to report a settled agent status and returns it."""
-        args = ["agent", "prompt", name, text, "--wait", "--timeout", str(wait_ms)]
-        stdout = self._query(args, timeout=wait_ms / 1000 + PROMPT_TIMEOUT_MARGIN_SECONDS)
-        response = validate_response_json(PromptResponse, stdout, _operation_name(args))
-        return response.result.agent.agent_status
+    def prompt(self, name: str, text: str, wait_ms: int | None) -> str:
+        """Returns the settled status after waiting up to `wait_ms` for the turn.
+        With `wait_ms` set to None, it returns the status at submission without waiting."""
+        args = ["agent", "prompt", name, text]
+        timeout = TIMEOUT_SECONDS
+        if wait_ms is not None:
+            args += ["--wait", "--timeout", str(wait_ms)]
+            timeout = wait_ms / 1000 + PROMPT_TIMEOUT_MARGIN_SECONDS
+        command = _operation_name(args)
+        response = validate_response_json(PromptResponse, self._query(args, timeout), command)
+        status = response.result.agent.agent_status
+        if wait_ms is not None and status not in SETTLED_STATUSES:
+            raise HerdrError("unexpected_output", command, 0, "result.agent.agent_status")
+        return status
 
     def _query(self, args: list[str], timeout: float = TIMEOUT_SECONDS) -> str:
         command = _operation_name(args)

@@ -162,10 +162,14 @@ name starts with `rev-` or contains `-rev-`, such as `rev-main` or `hm-rev-main`
 
 `list_agents` lists the orchestrators in that layout. `send_message` sends only to a named
 orchestrator in that layout. Set the orchestrator's name with `herdr agent rename`. The server tells
-the client to send your words unchanged. `send_message` sends only if its final status check reports
-that the orchestrator is idle or done.
+the client to send your words unchanged. `send_message` checks the orchestrator's status once before
+the send. It sends only if that check shows the orchestrator idle or done, or shows a busy Claude Code
+orchestrator. A message to a busy Claude Code orchestrator is sent without waiting for the turn. It
+asks the orchestrator to finish its current task first unless the message asks it to stop.
+`send_message` refuses to send to a busy Codex orchestrator.
 
-The server sends your words and these instructions together in a single line.
+For an idle or done orchestrator, the server sends your words and these instructions together in a
+single line.
 
 ```
 Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.
@@ -174,10 +178,11 @@ Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain
 Reply with the option number in another message, such as "option 2". Grok sends that reply to the
 same orchestrator name. Answer Claude Code's permission prompts at the computer.
 
-`send_message` waits up to 30 seconds for the orchestrator's turn to settle. It then returns the
-orchestrator's visible screen when herdr can read it. The screen may show an earlier answer or just
-the end of a long answer. If the wait times out, `send_message` can report that the message may have
-been sent. Check the same orchestrator with `get_agent_activity` before you send again.
+When that check shows the orchestrator idle or done, `send_message` waits up to 30 seconds for the
+turn to settle. `send_message` then returns the orchestrator's visible screen when herdr can read
+it. The screen may show an earlier answer or just the end of a long answer. If the wait times out,
+`send_message` can report that the message may have been sent. Check the same orchestrator with
+`get_agent_activity` before you send again.
 
 - The orchestrator can start working between the status check and delivery.
 - The agent can move to another tab or workspace before delivery.
