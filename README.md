@@ -183,6 +183,13 @@ been sent. Check the same orchestrator with `get_agent_activity` before you send
 - The agent can move to another tab or workspace before delivery.
 - Another agent can take the target name before delivery.
 
+## Development
+
+Install the package and its development dependencies with `uv sync`. Run the tests with
+`uv run pytest`. Run the linter with `uv run ruff check`. Check the formatting with
+`uv run ruff format --check`. GitHub runs these three checks on each pull request that has no
+merge conflict.
+
 ## License
 
 herdr-mcp is licensed under the MIT license. The container image bundles herdr. Herdr uses the
