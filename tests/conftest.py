@@ -96,7 +96,9 @@ def screen_read_args(target: str) -> tuple[str, ...]:
 READ_ALPHA_ARGS = screen_read_args("alpha")
 
 
-def prompt_args(name: str, text: str) -> tuple[str, ...]:
+def prompt_args(name: str, text: str, wait: bool = True) -> tuple[str, ...]:
+    if not wait:
+        return ("herdr", "agent", "prompt", name, text)
     return ("herdr", "agent", "prompt", name, text, "--wait", "--timeout", "30000")
 
 
@@ -170,10 +172,15 @@ def orchestrator_snapshot(
     shared_tab: bool = False,
     tab_number: int = 1,
     name: str | None = "alpha",
+    kind: str | None = "claude",
 ) -> dict[str, Any]:
     payload = copy.deepcopy(snapshot_json)
     snapshot = payload["result"]["snapshot"]
     snapshot["agents"][0]["agent_status"] = status
+    if kind is None:
+        del snapshot["agents"][0]["agent"]
+    else:
+        snapshot["agents"][0]["agent"] = kind
     snapshot["tabs"][0]["number"] = tab_number
     if name is None:
         del snapshot["agents"][0]["name"]
@@ -217,6 +224,12 @@ FRAMED_MESSAGE = (
     "Reply in plain text and do not open a question dialog. "
     "If you need me to choose, list numbered options and end your turn."
 )
+FRAMED_BUSY_MESSAGE = (
+    'Voice message from the engineer, relayed by Grok: "run the tests". '
+    "Reply in plain text and do not open a question dialog. "
+    "If you need me to choose, list numbered options and end your turn. "
+    "If you are in the middle of a task, finish it first unless this message asks you to stop."
+)
 QUOTED_MESSAGE = 'should we use "A" or {B}?'
 FRAMED_QUOTED_MESSAGE = (
     'Voice message from the engineer, relayed by Grok: "should we use "A" or {B}?". '
@@ -233,6 +246,7 @@ UNSENDABLE_CHARACTER = "The message contains a character I cannot send."
 NOT_ORCHESTRATOR = "I can only send messages to an orchestrator agent."
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 MAYBE_SENT = "The message may have been sent. Check the agent's activity before you send it again."
+BUSY = "That agent is busy, so I did not send the message."
 SEND_MESSAGE_REFUSALS = [
     (
         "w1:p1",
@@ -258,13 +272,8 @@ SEND_MESSAGE_REFUSALS = [
     ("gamma", MESSAGE, {}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
     ("rev-main", MESSAGE, {"name": "rev-main"}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
     ("hm-rev-main", MESSAGE, {"name": "hm-rev-main"}, [SNAPSHOT_ARGS], NOT_ORCHESTRATOR),
-    (
-        "alpha",
-        MESSAGE,
-        {"status": "working"},
-        [SNAPSHOT_ARGS],
-        "That agent is busy, so I did not send the message.",
-    ),
+    ("alpha", MESSAGE, {"status": "working", "kind": "codex"}, [SNAPSHOT_ARGS], BUSY),
+    ("alpha", MESSAGE, {"status": "working", "kind": None}, [SNAPSHOT_ARGS], BUSY),
     ("alpha", MESSAGE, {"status": "blocked"}, [SNAPSHOT_ARGS], AGENT_BLOCKED),
     (
         "alpha",
@@ -273,6 +282,10 @@ SEND_MESSAGE_REFUSALS = [
         [SNAPSHOT_ARGS],
         "I cannot tell whether that agent is ready, so I did not send the message.",
     ),
+]
+UNSETTLED_PROMPT_RESULTS = [
+    (RunResult(0, "{}", ""), "result"),
+    (settled_as("working"), "result.agent.agent_status"),
 ]
 PROMPT_FAILURE_SENTENCES = [
     (failed_with("agent_blocked"), AGENT_BLOCKED),

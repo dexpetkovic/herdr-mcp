@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, NonNegativeInt
 
+AgentStatus = Literal["idle", "working", "blocked", "done", "unknown"]
+
 
 class _WireModel(BaseModel):
     """Validates the fields read from herdr 0.9.5's bundled schema, `herdr api schema --json`."""
@@ -31,7 +33,7 @@ class _AgentRow(_WireModel):
     pane_id: str
     workspace_id: str
     tab_id: str
-    agent_status: Literal["idle", "working", "blocked", "done", "unknown"]
+    agent_status: AgentStatus
     agent: str | None = None
     name: str | None = None
 
@@ -51,7 +53,7 @@ class SnapshotResponse(_WireModel):
 
 
 class _PromptedAgent(_WireModel):
-    agent_status: Literal["idle", "done", "blocked"]
+    agent_status: AgentStatus
 
 
 class _PromptResult(_WireModel):

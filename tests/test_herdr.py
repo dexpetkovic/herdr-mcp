@@ -5,6 +5,7 @@ from conftest import (
     SCREEN_TEXT,
     SNAPSHOT_ARGS,
     UNREADABLE_STDERR,
+    UNSETTLED_PROMPT_RESULTS,
     failed_with,
     prompt_args,
     settled_as,
@@ -158,16 +159,31 @@ def test_prompt_waits_for_the_turn_and_returns_the_settled_status(fake_runner):
     )
 
 
-def test_prompt_without_a_settled_status_is_unexpected_output(fake_runner):
-    runner = fake_runner({prompt_args("alpha", "run the tests"): RunResult(0, "{}", "")})
+def test_prompt_without_waiting_returns_the_status_at_submission(fake_runner):
+    runner = fake_runner({prompt_args("alpha", "run the tests", wait=False): settled_as("working")})
+
+    status = Herdr("herdr", runner).prompt("alpha", "run the tests", None)
+
+    assert (status, runner.calls, runner.timeouts) == (
+        "working",
+        [("herdr", "agent", "prompt", "alpha", "run the tests")],
+        [10.0],
+    )
+
+
+@pytest.mark.parametrize(("prompt_result", "field"), UNSETTLED_PROMPT_RESULTS)
+def test_prompt_without_a_settled_status_is_unexpected_output(fake_runner, prompt_result, field):
+    runner = fake_runner({prompt_args("alpha", "run the tests"): prompt_result})
 
     with pytest.raises(HerdrError) as raised:
         Herdr("herdr", runner).prompt("alpha", "run the tests", 30000)
 
-    assert (raised.value.code, raised.value.command, raised.value.field) == (
+    error = raised.value
+    assert (error.code, error.command, error.exit_code, error.field) == (
         "unexpected_output",
         "agent prompt",
-        "result",
+        0,
+        field,
     )
 
 
