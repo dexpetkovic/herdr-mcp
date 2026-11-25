@@ -165,10 +165,11 @@ orchestrator in that layout. Set the orchestrator's name with `herdr agent renam
 the client to send your words unchanged. `send_message` checks the orchestrator's status once before
 the send. It sends only if that check shows the orchestrator idle or done, or shows a busy Claude Code
 orchestrator. A message to a busy Claude Code orchestrator is sent without waiting for the turn. It
-asks the orchestrator to finish its current task first. `send_message` refuses to send to a busy
-Codex orchestrator.
+asks the orchestrator to finish its current task first unless the message asks it to stop.
+`send_message` refuses to send to a busy Codex orchestrator.
 
-The server sends your words and these instructions together in a single line.
+For an idle or done orchestrator, the server sends your words and these instructions together in a
+single line.
 
 ```
 Voice message from the engineer, relayed by Grok: "<your words>". Reply in plain text and do not open a question dialog. If you need me to choose, list numbered options and end your turn.

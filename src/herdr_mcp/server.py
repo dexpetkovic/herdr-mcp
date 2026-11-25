@@ -15,7 +15,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import ConfigError, Settings, load_settings
-from herdr_mcp.herdr.client import AgentRecord, Herdr, subprocess_runner
+from herdr_mcp.herdr.client import CLAUDE_CODE_KIND, AgentRecord, Herdr, subprocess_runner
 from herdr_mcp.herdr.exceptions import HerdrError
 
 logger = logging.getLogger("herdr_mcp")
@@ -29,7 +29,6 @@ AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 REVIEWER_NAME = re.compile(r"(?:^|-)rev-")
 CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 READY_STATUSES = frozenset({"idle", "done"})
-CLAUDE_CODE_KIND = "claude"
 REPLY_WAIT_MS = 30000
 VOICE_MESSAGE_FRAME = (
     'Voice message from the engineer, relayed by Grok: "{text}". '
@@ -298,7 +297,6 @@ def _is_agent_target(value: str) -> bool:
 
 
 def _sendable_orchestrator_or_refusal(name: str, records: list[AgentRecord]) -> AgentRecord | str:
-    """A busy Claude Code orchestrator holds a typed message until its current turn ends."""
     record = next((record for record in records if record.name == name), None)
     if record is None:
         return f"No agent named {name} is running."

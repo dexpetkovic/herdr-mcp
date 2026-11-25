@@ -14,6 +14,7 @@ PROMPT_TIMEOUT_MARGIN_SECONDS = 5.0
 INVALID_SYNTAX_EXIT_CODE = 2
 SNAPSHOT_ARGS = ["api", "snapshot"]
 SETTLED_STATUSES = frozenset({"idle", "done", "blocked"})
+CLAUDE_CODE_KIND = "claude"
 
 
 @dataclass(frozen=True)
