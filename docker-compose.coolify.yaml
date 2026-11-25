@@ -4,9 +4,15 @@ services:
     expose:
       - "8765"
     # herdr's socket is mode 0600, so the container runs as the socket owner's uid.
-    user: "2001:2001"
+    user: "${HERDR_UID:?}:${HERDR_GID:?}"
     volumes:
-      - /home/agent/.config/herdr:/herdr:ro
+      # Coolify treats a variable source without a default path as a bind only in long syntax.
+      - type: bind
+        source: ${HERDR_CONFIG_DIR:-}
+        target: /herdr
+        read_only: true
     environment:
       HERDR_MCP_TOKEN: ${HERDR_MCP_TOKEN:?}
       HERDR_MCP_PUBLIC_HOST: ${HERDR_MCP_PUBLIC_HOST:?}
+      # herdr-mcp ignores this entry. It makes Compose reject an empty bind source.
+      HERDR_CONFIG_DIR: "${HERDR_CONFIG_DIR:?Set HERDR_CONFIG_DIR}"

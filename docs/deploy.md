@@ -73,9 +73,9 @@ file publishes no port. The Coolify dashboard uses port 8000 by default. herdr-m
 
 Create the resource with these steps.
 
-1. In your copy of the repository, edit `docker-compose.coolify.yaml`. Set the `user` line to the uid
-   and gid of the user that runs herdr, such as `"1000:1000"`. Set the mount source to that user's
-   `.config/herdr` directory as an absolute path. Push the change to `main`.
+1. Log in to the server as the user that runs herdr. Run `id -u` and `id -g`, and note the uid and
+   gid they print. Note the absolute path of the directory that holds the intended `herdr.sock`,
+   such as `/home/alice/.config/herdr`. Step 10 uses these three values.
 2. Apply the provider firewall in [Firewall](#firewall). Do this before any later step publishes
    Coolify's dashboard.
 3. Set up the HTTPS dashboard hostname in [Coolify webhook over
@@ -95,8 +95,10 @@ Create the resource with these steps.
    first build. The warning is harmless. Coolify can also warn that the domain's DNS does not point
    at the server yet. Recheck the domain after step 11 publishes the DNS record.
 9. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
-10. Set `HERDR_MCP_TOKEN` and `HERDR_MCP_PUBLIC_HOST=mcp.example.com` under **Environment
-   Variables**. Coolify refuses to deploy while either is empty.
+10. Set five runtime variables under **Environment Variables**. Set `HERDR_MCP_TOKEN` to the token.
+    Set `HERDR_MCP_PUBLIC_HOST` to `mcp.example.com`. Set `HERDR_UID` and `HERDR_GID` to the uid and
+    gid from step 1. Set `HERDR_CONFIG_DIR` to the directory from step 1. The deploy fails while any
+    of the five is empty. Its error names the empty variable.
 11. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
     certificate and the DNS record.
 12. Deploy. Then run the origin certificate check at the end of [Expose it through one public
