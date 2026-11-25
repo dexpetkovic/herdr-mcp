@@ -1,6 +1,7 @@
 # Grok custom instructions
 
-Paste this text into Grok under **Settings**, then **Customize**.
+Open [grok.com/connectors](https://grok.com/connectors) and open the herdr-mcp connector.
+Paste this text into the connector's **Customize** field.
 Paste it again whenever this file changes.
 
 ```

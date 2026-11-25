@@ -99,8 +99,8 @@ The project lives in the `dexpetkovic/herdr-mcp` repository. The server reports 
    public HTTPS endpoint ending in `/mcp`, such as `https://mcp.example.com/mcp`.
 3. Add the header `Authorization: Bearer <token>` to the connector. `<token>` is the value of
    `HERDR_MCP_TOKEN`.
-4. Paste the text from [docs/grok-instructions.md](docs/grok-instructions.md) into Grok under
-   **Settings**, then **Customize**.
+4. Open the herdr-mcp connector at [grok.com/connectors](https://grok.com/connectors). Paste the
+   text from [docs/grok-instructions.md](docs/grok-instructions.md) into its **Customize** field.
 
 [Connect Grok](docs/deploy.md#connect-grok) in the deployment guide shows how to check the endpoint.
 Grok can keep an old tool list. The same section shows how to recreate the connector with a new

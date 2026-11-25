@@ -276,8 +276,8 @@ Add the connector.
 2. Enter `https://mcp.example.com/mcp` as the server URL.
 3. Add the header `Authorization` with the value `Bearer <token>`. `<token>` is the value of
    `HERDR_MCP_TOKEN`.
-4. Paste the text from [grok-instructions.md](grok-instructions.md) into Grok under **Settings**,
-   then **Customize**.
+4. Open the herdr-mcp connector at [grok.com/connectors](https://grok.com/connectors). Paste the
+   text from [grok-instructions.md](grok-instructions.md) into its **Customize** field.
 5. Ask Grok what your herdr agents are doing. Compare the answer with an agent that you see in herdr.
 
 The two probes never touch the herdr socket. On the first deployment, Grok showed the tool as
