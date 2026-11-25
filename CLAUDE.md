@@ -1,6 +1,6 @@
 # herdr-mcp
 
-herdr-mcp is an MCP server that reports herdr agents through the herdr CLI.
+herdr-mcp is a Grok-ready MCP server that follows and steers herdr agents through the herdr CLI.
 
 ## Commands
 

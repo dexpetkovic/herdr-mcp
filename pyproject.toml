@@ -1,7 +1,7 @@
 [project]
 name = "herdr-mcp"
 version = "0.1.0"
-description = "An MCP server that reports herdr agents."
+description = "Grok-ready MCP server to follow and steer your herdr coding agents, from your Tesla too."
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = ["mcp==2.3.0", "pydantic", "uvicorn"]
