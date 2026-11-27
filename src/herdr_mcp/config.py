@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 from dataclasses import dataclass
+from pathlib import Path
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,256}")
 HOSTNAME_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
@@ -23,6 +24,7 @@ class Settings:
     port: int
     herdr_binary: str
     log_headers: bool
+    history_path: Path
 
 
 def load_settings() -> Settings:
@@ -33,6 +35,9 @@ def load_settings() -> Settings:
         port=_parse_port(os.environ.get("HERDR_MCP_PORT", "8765")),
         herdr_binary=_resolve_herdr_binary(os.environ.get("HERDR_BIN", "herdr")),
         log_headers=_parse_log_headers(os.environ.get("HERDR_MCP_LOG_HEADERS", "0")),
+        history_path=_parse_history_path(
+            os.environ.get("HERDR_MCP_HISTORY_PATH", "~/.local/state/herdr-mcp/history.sqlite3")
+        ),
     )
 
 
@@ -83,3 +88,15 @@ def _parse_log_headers(value: str) -> bool:
     if value not in ("0", "1"):
         raise ConfigError("HERDR_MCP_LOG_HEADERS must be 0 or 1.")
     return value == "1"
+
+
+def _parse_history_path(value: str) -> Path:
+    try:
+        expanded_history_path = Path(value).expanduser()
+    except RuntimeError:
+        raise ConfigError(
+            "HERDR_MCP_HISTORY_PATH names a home directory that does not exist."
+        ) from None
+    if not expanded_history_path.is_absolute():
+        raise ConfigError("HERDR_MCP_HISTORY_PATH must be an absolute path.")
+    return expanded_history_path

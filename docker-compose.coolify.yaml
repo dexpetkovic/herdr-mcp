@@ -11,8 +11,13 @@ services:
         source: ${HERDR_CONFIG_DIR:-}
         target: /herdr
         read_only: true
+      # The history directory must be writable by HERDR_UID:HERDR_GID.
+      - type: bind
+        source: ${HERDR_MCP_DATA_DIR:-}
+        target: /data
     environment:
       HERDR_MCP_TOKEN: ${HERDR_MCP_TOKEN:?}
       HERDR_MCP_PUBLIC_HOST: ${HERDR_MCP_PUBLIC_HOST:?}
       # herdr-mcp ignores this entry. It makes Compose reject an empty bind source.
       HERDR_CONFIG_DIR: "${HERDR_CONFIG_DIR:?Set HERDR_CONFIG_DIR}"
+      HERDR_MCP_DATA_DIR: "${HERDR_MCP_DATA_DIR:?Set HERDR_MCP_DATA_DIR}"

@@ -1,7 +1,11 @@
 import copy
 import json
+import sqlite3
+import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +18,7 @@ from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import Settings
 from herdr_mcp.herdr.client import AgentRecord, Herdr, RunResult
 from herdr_mcp.herdr.exceptions import HerdrError
+from herdr_mcp.history import ConversationHistory, SqliteConversationHistory
 from herdr_mcp.server import build_app
 
 SNAPSHOT_ARGS = ("herdr", "api", "snapshot")
@@ -29,6 +34,7 @@ SETTING_VARIABLES = [
     "HERDR_MCP_PORT",
     "HERDR_BIN",
     "HERDR_MCP_LOG_HEADERS",
+    "HERDR_MCP_HISTORY_PATH",
 ]
 INVALID_SETTINGS = [
     ("HERDR_MCP_TOKEN", None),
@@ -38,6 +44,8 @@ INVALID_SETTINGS = [
     ("HERDR_MCP_HOST", "localhost:80"),
     ("HERDR_MCP_PORT", "0"),
     ("HERDR_MCP_PORT", "0" * 5000 + "8000" + "0"),
+    ("HERDR_MCP_HISTORY_PATH", "relative/history.sqlite3"),
+    ("HERDR_MCP_HISTORY_PATH", "~no-such-user-for-herdr-mcp/history.sqlite3"),
 ]
 UNAUTHORIZED_REQUESTS = {
     "missing header": ("/mcp", {}),
@@ -218,29 +226,36 @@ def failed_with(code: str) -> RunResult:
     return RunResult(exit_code=1, stdout="", stderr=stderr)
 
 
+EXCHANGE_ID = "0a1b2c3d" * 4
+RECAP_SENTENCE = (
+    " After your answer or your numbered options, call save_reply_recap from the herdr MCP server "
+    "with exchange_id 0a1b2c3d0a1b2c3d0a1b2c3d0a1b2c3d and a one-line recap, then end your turn."
+)
+RECAP = "The tests passed."
 MESSAGE = "run the tests"
 FRAMED_MESSAGE = (
     'Voice message from the engineer, relayed by Grok: "run the tests". '
     "Reply in plain text and do not open a question dialog. "
-    "If you need me to choose, list numbered options and end your turn."
+    "If you need me to choose, list numbered options." + RECAP_SENTENCE
 )
 FRAMED_BUSY_MESSAGE = (
     'Voice message from the engineer, relayed by Grok: "run the tests". '
     "Reply in plain text and do not open a question dialog. "
-    "If you need me to choose, list numbered options and end your turn. "
+    "If you need me to choose, list numbered options. "
     "If you are in the middle of a task, finish it first unless this message asks you to stop."
+    + RECAP_SENTENCE
 )
 QUOTED_MESSAGE = 'should we use "A" or {B}?'
 FRAMED_QUOTED_MESSAGE = (
     'Voice message from the engineer, relayed by Grok: "should we use "A" or {B}?". '
     "Reply in plain text and do not open a question dialog. "
-    "If you need me to choose, list numbered options and end your turn."
+    "If you need me to choose, list numbered options." + RECAP_SENTENCE
 )
 LONGEST_MESSAGE = "a" * 2000
 FRAMED_LONGEST_MESSAGE = (
     'Voice message from the engineer, relayed by Grok: "' + "a" * 2000 + '". '
     "Reply in plain text and do not open a question dialog. "
-    "If you need me to choose, list numbered options and end your turn."
+    "If you need me to choose, list numbered options." + RECAP_SENTENCE
 )
 UNSENDABLE_CHARACTER = "The message contains a character I cannot send."
 NOT_ORCHESTRATOR = "I can only send messages to an orchestrator agent."
@@ -304,8 +319,68 @@ PROMPT_FAILURE_SENTENCES = [
 ]
 
 
+FIXED_NOW = datetime(2026, 11, 27, 8, 0, tzinfo=UTC)
+
+
+class SettableClock:
+    def __init__(self) -> None:
+        self.now = FIXED_NOW
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+@pytest.fixture
+def clock() -> SettableClock:
+    return SettableClock()
+
+
+@pytest.fixture
+def history_path(tmp_path) -> Path:
+    return tmp_path / "state" / "history.sqlite3"
+
+
+@pytest.fixture
+def history(history_path, clock) -> SqliteConversationHistory:
+    return SqliteConversationHistory(history_path, clock)
+
+
+FIRST_EXCHANGE_ID = "a" * 32
+SECOND_EXCHANGE_ID = "b" * 32
+
+
+def numbered_exchange_id(number: int) -> str:
+    return f"{number:032x}"
+
+
+def count_history_table_rows(path, table: str) -> int:
+    with closing(sqlite3.connect(path)) as connection:
+        return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+@pytest.fixture(autouse=True)
+def fixed_exchange_id(monkeypatch) -> str:
+    monkeypatch.setattr("herdr_mcp.server.secrets.token_hex", lambda nbytes: EXCHANGE_ID)
+    return EXCHANGE_ID
+
+
 @contextmanager
-def mcp_session(herdr: Herdr) -> Iterator[tuple[TestClient, dict[str, str]]]:
+def mcp_session(
+    herdr: Herdr, history: ConversationHistory | None = None
+) -> Iterator[tuple[TestClient, dict[str, str]]]:
+    with tempfile.TemporaryDirectory() as directory:
+        if history is None:
+            history = SqliteConversationHistory(
+                Path(directory) / "history.sqlite3", SettableClock()
+            )
+        with _initialized_client(herdr, history) as session:
+            yield session
+
+
+@contextmanager
+def _initialized_client(
+    herdr: Herdr, history: ConversationHistory
+) -> Iterator[tuple[TestClient, dict[str, str]]]:
     settings = Settings(
         token=TOKEN,
         public_host=None,
@@ -313,13 +388,16 @@ def mcp_session(herdr: Herdr) -> Iterator[tuple[TestClient, dict[str, str]]]:
         port=8000,
         herdr_binary="herdr",
         log_headers=False,
+        history_path=Path("/unused/history.sqlite3"),
     )
     headers = {
         "Authorization": f"Bearer {TOKEN}",
         "Accept": "application/json, text/event-stream",
         "Content-Type": "application/json",
     }
-    with TestClient(build_app(settings, herdr), base_url="http://127.0.0.1:8000") as client:
+    with TestClient(
+        build_app(settings, herdr, history), base_url="http://127.0.0.1:8000"
+    ) as client:
         response = client.post("/mcp", headers=headers, json=INITIALIZE_REQUEST)
         headers["Mcp-Session-Id"] = response.headers["mcp-session-id"]
         client.post("/mcp", headers=headers, json=INITIALIZED_NOTIFICATION)
