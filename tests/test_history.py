@@ -67,6 +67,23 @@ def test_recap_of_an_evicted_exchange_is_deleted_with_it(history, history_path):
     assert sorted(stored_recaps) == sorted(f"recap {number}" for number in range(2, 32))
 
 
+def test_expired_exchange_does_not_count_against_the_limit(history, clock):
+    for number in range(1, 31):
+        history.record_exchange(numbered_exchange_id(number), "alpha", f"message {number}")
+    history.save_recap(numbered_exchange_id(2), "recap 2")
+    clock.now -= timedelta(days=8)
+    history.record_exchange(numbered_exchange_id(31), "alpha", "message 31")
+    clock.now += timedelta(days=8)
+    history.record_exchange(numbered_exchange_id(32), "alpha", "message 32")
+
+    exchanges = history.recent_exchanges()
+
+    assert [exchange.exchange_id for exchange in exchanges] == [
+        numbered_exchange_id(number) for number in [*range(2, 31), 32]
+    ]
+    assert exchanges[0].recap == "recap 2"
+
+
 def test_recap_saved_late_expires_with_its_message(history, history_path, clock):
     history.record_exchange(FIRST_EXCHANGE_ID, "alpha", "run the tests")
     clock.now += timedelta(days=6)

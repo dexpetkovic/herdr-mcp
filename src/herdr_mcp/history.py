@@ -21,8 +21,8 @@ CREATE_TABLES = (
     "saved_at TEXT NOT NULL, recap TEXT NOT NULL)",
 )
 KEPT_EXCHANGE_CONDITION = (
-    "sent_at >= :oldest_kept AND id IN "
-    "(SELECT id FROM exchanges ORDER BY id DESC LIMIT :max_exchanges)"
+    "sent_at >= :oldest_kept AND id IN (SELECT id FROM exchanges "
+    "WHERE sent_at >= :oldest_kept ORDER BY id DESC LIMIT :max_exchanges)"
 )
 # Recaps go with their message. A recap without a message row waits for it until it expires.
 DELETE_OUTDATED_ROWS = (
