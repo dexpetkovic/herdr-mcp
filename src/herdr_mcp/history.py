@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 MAX_EXCHANGES = 30
 MAX_EXCHANGE_AGE = timedelta(days=7)
-# A send already waits on the orchestrator, so a locked file fails fast instead of adding delay.
+# The reply wait leaves a short budget for a SQLite lock.
 LOCK_TIMEOUT_SECONDS = 0.5
 CREATE_TABLES = (
     "CREATE TABLE IF NOT EXISTS exchanges (id INTEGER PRIMARY KEY, "
@@ -20,13 +20,16 @@ CREATE_TABLES = (
     "CREATE TABLE IF NOT EXISTS recaps (exchange_id TEXT PRIMARY KEY, "
     "saved_at TEXT NOT NULL, recap TEXT NOT NULL)",
 )
-DELETE_EXPIRED_ROWS = (
-    "DELETE FROM exchanges WHERE sent_at < :oldest_kept",
-    "DELETE FROM recaps WHERE saved_at < :oldest_kept",
-)
-DELETE_EXCHANGES_BEYOND_LIMIT = (
-    "DELETE FROM exchanges WHERE id NOT IN "
+KEPT_EXCHANGE_CONDITION = (
+    "sent_at >= :oldest_kept AND id IN "
     "(SELECT id FROM exchanges ORDER BY id DESC LIMIT :max_exchanges)"
+)
+# Recaps go with their message. A recap without a message row waits for it until it expires.
+DELETE_OUTDATED_ROWS = (
+    "DELETE FROM recaps WHERE exchange_id IN (SELECT exchange_id FROM exchanges "
+    f"WHERE NOT ({KEPT_EXCHANGE_CONDITION}))",
+    f"DELETE FROM exchanges WHERE NOT ({KEPT_EXCHANGE_CONDITION})",
+    "DELETE FROM recaps WHERE saved_at < :oldest_kept",
 )
 SELECT_RECENT_EXCHANGES = (
     "SELECT exchanges.exchange_id, sent_at, orchestrator, message, recap FROM exchanges "
@@ -56,21 +59,19 @@ class ConversationHistory(Protocol):
 
 
 class SqliteConversationHistory:
-    """Keeps the newest 30 exchanges of the last seven days in one SQLite file.
-
-    Timestamps are UTC ISO 8601 to the second, so string order is time order."""
+    """Timestamps are UTC ISO 8601 to the second, so string order is time order."""
 
     def __init__(self, path: Path, clock: Callable[[], datetime]) -> None:
         self._path = path
         self._clock = clock
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         except OSError as error:
             raise HistoryUnavailable(str(path)) from error
         with self._transaction(begin_immediately=True) as connection:
-            for statement in CREATE_TABLES:
-                connection.execute(statement)
-            self._delete_expired_rows(connection)
+            for create_table_statement in CREATE_TABLES:
+                connection.execute(create_table_statement)
+            self._delete_outdated_rows(connection)
 
     def record_exchange(self, exchange_id: str, orchestrator: str, message: str) -> None:
         with self._transaction() as connection:
@@ -79,8 +80,7 @@ class SqliteConversationHistory:
                 "VALUES (?, ?, ?, ?)",
                 (exchange_id, _timestamp(self._clock()), orchestrator, message),
             )
-            self._delete_expired_rows(connection)
-            connection.execute(DELETE_EXCHANGES_BEYOND_LIMIT, {"max_exchanges": MAX_EXCHANGES})
+            self._delete_outdated_rows(connection)
 
     def save_recap(self, exchange_id: str, recap: str) -> None:
         with self._transaction() as connection:
@@ -91,7 +91,7 @@ class SqliteConversationHistory:
 
     def recent_exchanges(self) -> list[Exchange]:
         with self._transaction() as connection:
-            rows = connection.execute(
+            exchange_rows = connection.execute(
                 SELECT_RECENT_EXCHANGES, {"oldest_kept": self._oldest_kept_timestamp()}
             ).fetchall()
         return [
@@ -102,12 +102,13 @@ class SqliteConversationHistory:
                 message=message,
                 recap=recap,
             )
-            for exchange_id, sent_at, orchestrator, message, recap in rows
+            for exchange_id, sent_at, orchestrator, message, recap in exchange_rows
         ]
 
-    def _delete_expired_rows(self, connection: sqlite3.Connection) -> None:
-        for statement in DELETE_EXPIRED_ROWS:
-            connection.execute(statement, {"oldest_kept": self._oldest_kept_timestamp()})
+    def _delete_outdated_rows(self, connection: sqlite3.Connection) -> None:
+        parameters = {"oldest_kept": self._oldest_kept_timestamp(), "max_exchanges": MAX_EXCHANGES}
+        for delete_statement in DELETE_OUTDATED_ROWS:
+            connection.execute(delete_statement, parameters)
 
     def _oldest_kept_timestamp(self) -> str:
         return _timestamp(self._clock() - MAX_EXCHANGE_AGE)

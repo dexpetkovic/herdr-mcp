@@ -45,6 +45,7 @@ INVALID_SETTINGS = [
     ("HERDR_MCP_PORT", "0"),
     ("HERDR_MCP_PORT", "0" * 5000 + "8000" + "0"),
     ("HERDR_MCP_HISTORY_PATH", "relative/history.sqlite3"),
+    ("HERDR_MCP_HISTORY_PATH", "~no-such-user-for-herdr-mcp/history.sqlite3"),
 ]
 UNAUTHORIZED_REQUESTS = {
     "missing header": ("/mcp", {}),
@@ -344,15 +345,15 @@ def history(history_path, clock) -> SqliteConversationHistory:
     return SqliteConversationHistory(history_path, clock)
 
 
-FIRST_ID = "a" * 32
-SECOND_ID = "b" * 32
+FIRST_EXCHANGE_ID = "a" * 32
+SECOND_EXCHANGE_ID = "b" * 32
 
 
 def numbered_exchange_id(number: int) -> str:
     return f"{number:032x}"
 
 
-def count_rows(path, table: str) -> int:
+def count_history_table_rows(path, table: str) -> int:
     with closing(sqlite3.connect(path)) as connection:
         return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 

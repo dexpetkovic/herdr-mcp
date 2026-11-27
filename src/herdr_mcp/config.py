@@ -91,7 +91,12 @@ def _parse_log_headers(value: str) -> bool:
 
 
 def _parse_history_path(value: str) -> Path:
-    path = Path(value).expanduser()
-    if not path.is_absolute():
+    try:
+        expanded_history_path = Path(value).expanduser()
+    except RuntimeError:
+        raise ConfigError(
+            "HERDR_MCP_HISTORY_PATH names a home directory that does not exist."
+        ) from None
+    if not expanded_history_path.is_absolute():
         raise ConfigError("HERDR_MCP_HISTORY_PATH must be an absolute path.")
-    return path
+    return expanded_history_path

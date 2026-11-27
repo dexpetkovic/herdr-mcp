@@ -435,7 +435,7 @@ def test_send_to_a_locked_history_returns_the_normal_result_and_logs_a_warning(
     assert len(warnings) == 1
 
 
-def test_save_reply_recap_rejects_an_id_that_no_voice_message_gave(fake_runner):
+def test_save_reply_recap_rejects_a_malformed_exchange_id(fake_runner):
     with mcp_session(Herdr("herdr", fake_runner({}))) as (client, headers):
         call = tool_call("save_reply_recap", {"exchange_id": "XYZ", "recap": RECAP})
         result = client.post("/mcp", headers=headers, json=call).json()["result"]

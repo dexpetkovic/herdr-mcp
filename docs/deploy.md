@@ -121,6 +121,7 @@ checkout, as the user that runs herdr. Set `HERDR_MCP_PUBLIC_HOST` to the public
 `mcp.example.com`, in the shell that holds `HERDR_MCP_TOKEN`.
 
 ```sh
+mkdir -m 700 -p ~/.local/state/herdr-mcp
 docker build -t herdr-mcp .
 docker run -d --name herdr-mcp --restart unless-stopped \
   --user "$(id -u):$(id -g)" \
@@ -132,7 +133,8 @@ docker run -d --name herdr-mcp --restart unless-stopped \
   herdr-mcp
 ```
 
-Create the history directory first with `mkdir -m 700 -p ~/.local/state/herdr-mcp`.
+The `mkdir` line creates the history directory before Docker mounts it. Docker would otherwise create
+it as root, and the container user could not write it.
 
 Run the HTTPS reverse proxy on the host, and forward the public hostname to `127.0.0.1:8765`.
 

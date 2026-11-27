@@ -147,7 +147,9 @@ the token only when it starts.
   any other Linux server](docs/deploy.md#on-any-other-linux-server), with the same `-p` or
   `--network` option as before.
 
-Then put the new token in the connector's `Authorization` header. Check the change with the
+Then put the new token in the connector's `Authorization` header. Put it in each orchestrator's
+settings too, as [Connect the orchestrators](docs/deploy.md#connect-the-orchestrators) shows, and
+restart each orchestrator. Until then, sends work but the orchestrators cannot save recaps. Check the change with the
 `initialize` probe in [Connect Grok](docs/deploy.md#connect-grok). Point it at your MCP URL, such as
 `http://127.0.0.1:8765/mcp` for a local setup. In the shell where you run curl, set
 `HERDR_MCP_TOKEN` to the new token. The probe should return `200`. Repeat with the old token and
@@ -159,7 +161,8 @@ with that output.
 herdr-mcp stores every message that `send_message` delivers, with the orchestrator's name, the time
 and the orchestrator's one-line recap. It stores nothing else that Grok hears or says. The history
 lives in one SQLite file at `HERDR_MCP_HISTORY_PATH`, which defaults to
-`~/.local/state/herdr-mcp/history.sqlite3`. Grok sees the newest 30 messages of the last 7 days.
+`~/.local/state/herdr-mcp/history.sqlite3`. herdr-mcp creates a missing directory with mode 700.
+Keep a directory you supply readable only by the user that runs herdr. Grok sees the newest 30 messages of the last 7 days.
 herdr-mcp deletes older rows when it starts and whenever it stores a new message.
 
 Each orchestrator holds the token in its own settings to save its recaps. That token can also steer
