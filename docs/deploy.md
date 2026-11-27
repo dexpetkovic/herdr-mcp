@@ -67,7 +67,8 @@ Coolify builds the image from `Dockerfile` on the server and runs it with
 Coolify's GitHub App source.
 
 The Compose file mounts the herdr socket directory read-only at `/herdr`. The read-only mount is
-enough for herdr-mcp. Coolify connects Traefik to the application's Compose network, so the Compose
+enough for herdr-mcp. The Compose file also mounts a history directory read-write at `/data`.
+herdr-mcp keeps its conversation history in `/data/history.sqlite3`. Coolify connects Traefik to the application's Compose network, so the Compose
 file publishes no port. The Coolify dashboard uses port 8000 by default. herdr-mcp listens on port
 8765.
 
@@ -75,7 +76,9 @@ Create the resource with these steps.
 
 1. Log in to the server as the user that runs herdr. Run `id -u` and `id -g`, and note the uid and
    gid they print. Note the absolute path of the directory that holds the intended `herdr.sock`,
-   such as `/home/alice/.config/herdr`. Step 10 uses these three values.
+   such as `/home/alice/.config/herdr`. Create the history directory as the same user with
+   `mkdir -m 700 -p ~/.local/state/herdr-mcp`, and note its absolute path, such as
+   `/home/alice/.local/state/herdr-mcp`. Step 10 uses these four values.
 2. Apply the provider firewall in [Firewall](#firewall). Do this before any later step publishes
    Coolify's dashboard.
 3. Set up the HTTPS dashboard hostname in [Coolify webhook over
@@ -95,10 +98,11 @@ Create the resource with these steps.
    first build. The warning is harmless. Coolify can also warn that the domain's DNS does not point
    at the server yet. Recheck the domain after step 11 publishes the DNS record.
 9. Remove the `www.` copy of the domain that Coolify adds under **Public access**.
-10. Set five runtime variables under **Environment Variables**. Set `HERDR_MCP_TOKEN` to the token.
+10. Set six runtime variables under **Environment Variables**. Set `HERDR_MCP_TOKEN` to the token.
     Set `HERDR_MCP_PUBLIC_HOST` to `mcp.example.com`. Set `HERDR_UID` and `HERDR_GID` to the uid and
-    gid from step 1. Set `HERDR_CONFIG_DIR` to the directory from step 1. The deploy fails while any
-    of the five is empty. Its error names the empty variable.
+    gid from step 1. Set `HERDR_CONFIG_DIR` to the socket directory from step 1. Set
+    `HERDR_MCP_DATA_DIR` to the history directory from step 1. The deploy fails while any of the six
+    is empty. Its error names the empty variable.
 11. Follow [Expose it through one public path](#expose-it-through-one-public-path) for the
     certificate and the DNS record.
 12. Deploy. Then run the origin certificate check at the end of [Expose it through one public
@@ -121,11 +125,14 @@ docker build -t herdr-mcp .
 docker run -d --name herdr-mcp --restart unless-stopped \
   --user "$(id -u):$(id -g)" \
   -v "$HOME/.config/herdr:/herdr:ro" \
+  -v "$HOME/.local/state/herdr-mcp:/data" \
   -e HERDR_MCP_TOKEN="$HERDR_MCP_TOKEN" \
   -e HERDR_MCP_PUBLIC_HOST="$HERDR_MCP_PUBLIC_HOST" \
   -p 127.0.0.1:8765:8765 \
   herdr-mcp
 ```
+
+Create the history directory first with `mkdir -m 700 -p ~/.local/state/herdr-mcp`.
 
 Run the HTTPS reverse proxy on the host, and forward the public hostname to `127.0.0.1:8765`.
 
@@ -287,8 +294,9 @@ In my testing, the Grok mobile app used a connector added at grok.com after I si
 account in the app. [Use it in your Tesla](../README.md#use-it-in-your-tesla) shows how to use the
 connector in the car.
 
-This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server name is `herdr`. Its tools are `list_agents`,
-`get_agent_activity` and `send_message`. The server sends instructions on `initialize` that tell
+This project lives in the `dexpetkovic/herdr-mcp` repository. Its MCP server name is `herdr`. Its
+tools are `list_agents`, `get_agent_activity`, `send_message`, `get_recent_conversation` and
+`save_reply_recap`. The server sends instructions on `initialize` that tell
 the client to answer from this live server.
 
 Grok can keep a connector's old tool list after the server changes, even when you recreate the
@@ -298,6 +306,46 @@ endpoint. The query string plays no part in authorization. Keep the bearer heade
 the connector. [xai-org/plugin-marketplace issue
 1402](https://github.com/xai-org/plugin-marketplace/issues/1402) reports stale tool lists for an
 OAuth connector.
+
+## Connect the orchestrators
+
+Each orchestrator saves a one-line recap of its answer to every voice message. Grok reads those
+recaps at the start of a new conversation. Each orchestrator therefore connects to herdr-mcp as an
+MCP client with the same token. Do this once for every orchestrator account on the server.
+
+The token in an orchestrator's settings can steer every orchestrator through `send_message`. Keep
+those settings files readable only by the user that runs herdr.
+
+For Claude Code, add the server at user scope and replace `<token>` with the value of
+`HERDR_MCP_TOKEN`.
+
+```sh
+claude mcp add --transport http --scope user herdr https://mcp.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+Allow the recap tool without a prompt in `~/.claude/settings.json`. Without this rule, each recap
+opens an approval dialog and the orchestrator waits on it.
+
+```json
+{ "permissions": { "allow": ["mcp__herdr__save_reply_recap"] } }
+```
+
+For Codex, export `HERDR_MCP_TOKEN` in the shell that starts Codex, then add the server.
+
+```sh
+codex mcp add herdr --url https://mcp.example.com/mcp --bearer-token-env-var HERDR_MCP_TOKEN
+```
+
+Allow the recap tool without a prompt in `~/.codex/config.toml`.
+
+```toml
+[mcp_servers.herdr.tools.save_reply_recap]
+approval_mode = "approve"
+```
+
+Restart the orchestrator after the change. Send it a voice message, then ask Grok in a new
+conversation what you talked about. The answer should name the recap.
 
 ## Troubleshooting
 
@@ -312,6 +360,8 @@ OAuth connector.
 | `herdr status` inside the container prints `endpoint_compatible: no`. | The image's herdr CLI differs from the running server's version. | Follow [Upgrading herdr](#upgrading-herdr). |
 | A native herdr-mcp reports agents from another herdr session. | It inherited `HERDR_SOCKET_PATH` from a herdr pane. | Run `echo "$HERDR_SOCKET_PATH"` in the shell that starts herdr-mcp. Start it in a shell where that path names the session you want. |
 | The container reports agents from another herdr session. | The container reads only `herdr.sock` in the mounted directory. | Check that the mounted directory holds the socket of the session you want to expose. |
+| herdr-mcp exits with `HERDR_MCP_HISTORY_PATH cannot be written`. | The user that runs herdr-mcp cannot create or write the history file. | Create the history directory as that user with `mkdir -m 700 -p ~/.local/state/herdr-mcp`. In a container, mount it at `/data`. |
+| A message appears in the history without a recap. | The orchestrator has not connected to herdr-mcp, waits on an approval dialog, or has not finished the task. | Follow [Connect the orchestrators](#connect-the-orchestrators). Check the orchestrator's screen for an approval dialog. |
 | Naming an agent fails because the name is taken. | Agent names are global per herdr server. | Give the agent a name that no other agent on the server uses. |
 | The domain also answers on `www.`. | Coolify added a `www.` copy of the domain. | Remove it under **Public access**. |
 | Grok shows old tools or old tool descriptions. | Grok may have cached the tool list for that URL. | Recreate the connector with a new `v` value, such as `/mcp?v=3`, and keep the bearer header. |

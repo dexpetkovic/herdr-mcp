@@ -1,8 +1,11 @@
 import logging
+import sqlite3
+from contextlib import closing
 
 import pytest
 from conftest import (
     EARLIER_AND_NEW_ANSWER,
+    EXCHANGE_ID,
     FRAMED_BUSY_MESSAGE,
     FRAMED_LONGEST_MESSAGE,
     FRAMED_MESSAGE,
@@ -14,6 +17,7 @@ from conftest import (
     ORCHESTRATOR_SUMMARY,
     PROMPT_FAILURE_SENTENCES,
     QUOTED_MESSAGE,
+    RECAP,
     SCREEN_TEXT,
     SEND_MESSAGE_REFUSALS,
     SNAPSHOT_ARGS,
@@ -322,3 +326,121 @@ def test_send_message_rejects_a_text_over_2000_characters(fake_runner):
 
     assert result["isError"] is True
     assert runner.calls == []
+
+
+def test_delivered_message_and_its_recap_appear_in_the_recent_conversation(
+    snapshot_json, fake_runner, history
+):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
+            prompt_args("alpha", FRAMED_MESSAGE): settled_as("done"),
+            screen_read_args("alpha"): RunResult(0, SCREEN_TEXT, ""),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner), history) as (client, headers):
+        send = tool_call("send_message", {"agent": "alpha", "text": MESSAGE})
+        client.post("/mcp", headers=headers, json=send)
+        recap = tool_call("save_reply_recap", {"exchange_id": EXCHANGE_ID, "recap": RECAP})
+        saved = client.post("/mcp", headers=headers, json=recap).json()["result"]
+        read = tool_call("get_recent_conversation", {})
+        result = client.post("/mcp", headers=headers, json=read).json()["result"]
+
+    assert saved["structuredContent"] == {"exchange_id": EXCHANGE_ID}
+    assert result["structuredContent"] == {
+        "exchanges": [
+            {
+                "exchange_id": EXCHANGE_ID,
+                "sent_at": "2026-11-27T08:00:00+00:00",
+                "orchestrator": "alpha",
+                "message": MESSAGE,
+                "recap": RECAP,
+            }
+        ]
+    }
+
+
+def test_refused_prompt_leaves_the_history_empty(snapshot_json, fake_runner, history):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
+            prompt_args("alpha", FRAMED_MESSAGE): failed_with("agent_blocked"),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner), history) as (client, headers):
+        client.post(
+            "/mcp",
+            headers=headers,
+            json=tool_call("send_message", {"agent": "alpha", "text": MESSAGE}),
+        )
+
+    assert history.recent_exchanges() == []
+
+
+def test_busy_send_is_stored_and_gains_its_recap_later(snapshot_json, fake_runner, history):
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json, status="working")),
+            prompt_args("alpha", FRAMED_BUSY_MESSAGE, wait=False): settled_as("working"),
+            screen_read_args("alpha"): RunResult(0, SCREEN_TEXT, ""),
+        }
+    )
+
+    with mcp_session(Herdr("herdr", runner), history) as (client, headers):
+        client.post(
+            "/mcp",
+            headers=headers,
+            json=tool_call("send_message", {"agent": "alpha", "text": MESSAGE}),
+        )
+        recaps_before = [exchange.recap for exchange in history.recent_exchanges()]
+        recap = tool_call("save_reply_recap", {"exchange_id": EXCHANGE_ID, "recap": RECAP})
+        client.post("/mcp", headers=headers, json=recap)
+
+    recaps_after = [exchange.recap for exchange in history.recent_exchanges()]
+    assert (recaps_before, recaps_after) == ([None], [RECAP])
+
+
+def test_send_to_a_locked_history_returns_the_normal_result_and_logs_a_warning(
+    snapshot_json, fake_runner, history, history_path, caplog
+):
+    caplog.set_level(logging.INFO, logger="herdr_mcp")
+    runner = fake_runner(
+        {
+            SNAPSHOT_ARGS: succeeded(orchestrator_snapshot(snapshot_json)),
+            prompt_args("alpha", FRAMED_MESSAGE): settled_as("done"),
+            screen_read_args("alpha"): RunResult(0, SCREEN_TEXT, ""),
+        }
+    )
+
+    with (
+        closing(sqlite3.connect(history_path, isolation_level=None)) as other_writer,
+        mcp_session(Herdr("herdr", runner), history) as (client, headers),
+    ):
+        other_writer.execute("BEGIN IMMEDIATE")
+        call = tool_call("send_message", {"agent": "alpha", "text": MESSAGE})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert result["structuredContent"] == {
+        "target": "alpha",
+        "sent": True,
+        "sent_while_busy": False,
+        "screen": TRIMMED_SCREEN,
+        "waiting_on_dialog": False,
+    }
+    warnings = [
+        record for record in caplog.records if record.getMessage() == "history write failed"
+    ]
+    assert len(warnings) == 1
+
+
+def test_save_reply_recap_rejects_an_id_that_no_voice_message_gave(fake_runner):
+    with mcp_session(Herdr("herdr", fake_runner({}))) as (client, headers):
+        call = tool_call("save_reply_recap", {"exchange_id": "XYZ", "recap": RECAP})
+        result = client.post("/mcp", headers=headers, json=call).json()["result"]
+
+    assert (result["isError"], result["content"]) == (
+        True,
+        [{"type": "text", "text": "That is not an exchange id from a voice message."}],
+    )

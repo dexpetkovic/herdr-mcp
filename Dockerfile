@@ -23,6 +23,7 @@ RUN uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH" \
     HERDR_MCP_HOST=0.0.0.0 \
     HERDR_MCP_PORT=8765 \
-    HERDR_SOCKET_PATH=/herdr/herdr.sock
+    HERDR_SOCKET_PATH=/herdr/herdr.sock \
+    HERDR_MCP_HISTORY_PATH=/data/history.sqlite3
 EXPOSE 8765
 CMD ["herdr-mcp"]

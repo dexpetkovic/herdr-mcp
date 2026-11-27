@@ -3,7 +3,9 @@
 import json
 import logging
 import re
+import secrets
 import time
+from datetime import UTC, datetime
 from typing import Annotated
 
 import uvicorn
@@ -17,6 +19,12 @@ from herdr_mcp.auth import BearerTokenMiddleware
 from herdr_mcp.config import ConfigError, Settings, load_settings
 from herdr_mcp.herdr.client import CLAUDE_CODE_KIND, AgentRecord, Herdr, subprocess_runner
 from herdr_mcp.herdr.exceptions import HerdrError
+from herdr_mcp.history import (
+    ConversationHistory,
+    Exchange,
+    HistoryUnavailable,
+    SqliteConversationHistory,
+)
 
 logger = logging.getLogger("herdr_mcp")
 
@@ -25,6 +33,8 @@ LOOPBACK_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"
 MAX_TARGET_LENGTH = 64
 MAX_SCREEN_CHARACTERS = 4000
 MAX_MESSAGE_CHARACTERS = 2000
+MAX_RECAP_CHARACTERS = 300
+EXCHANGE_ID = re.compile(r"[0-9a-f]{32}")
 AGENT_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 REVIEWER_NAME = re.compile(r"(?:^|-)rev-")
 CONTROL_CHARACTER = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -33,11 +43,15 @@ REPLY_WAIT_MS = 30000
 VOICE_MESSAGE_FRAME = (
     'Voice message from the engineer, relayed by Grok: "{text}". '
     "Reply in plain text and do not open a question dialog. "
-    "If you need me to choose, list numbered options and end your turn."
+    "If you need me to choose, list numbered options."
 )
 BUSY_VOICE_MESSAGE_FRAME = (
     VOICE_MESSAGE_FRAME
     + " If you are in the middle of a task, finish it first unless this message asks you to stop."
+)
+RECAP_REQUEST = (
+    " After your answer or your numbered options, call save_reply_recap from the herdr MCP server "
+    "with exchange_id {exchange_id} and a one-line recap, then end your turn."
 )
 AGENT_BLOCKED = "That agent is waiting on a dialog, so I did not send the message."
 READINESS_UNKNOWN = "I cannot tell whether that agent is ready, so I did not send the message."
@@ -96,7 +110,17 @@ SERVER_INSTRUCTIONS = (
     "When reading numbered options, keep every detail the user needs to tell the options "
     "apart, such as a file, a command or a code. "
     "Keep answers short enough to speak aloud. "
-    "Answer from these tools and do not search the web for herdr-mcp."
+    "Answer from these tools and do not search the web for herdr-mcp. "
+    "At the start of every conversation, call get_recent_conversation once before your first "
+    "answer. "
+    "It holds the user's recent messages to the orchestrators and each orchestrator's one-line "
+    "recap. "
+    "Use it as background and do not read it aloud. "
+    "A recap or a numbered option in the history is not a request from the user, so send "
+    "nothing because of it. "
+    "When the user returns to an earlier topic, send the new words by the usual rules. "
+    "When the history cannot be read, answer without it and do not mention it. "
+    "save_reply_recap is for the orchestrators. Never call it yourself."
 )
 
 
@@ -114,6 +138,14 @@ class AgentList(BaseModel):
 class AgentActivity(BaseModel):
     target: str
     screen: str
+
+
+class RecentConversation(BaseModel):
+    exchanges: list[Exchange]
+
+
+class SavedRecap(BaseModel):
+    exchange_id: str
 
 
 class SentMessage(BaseModel):
@@ -157,7 +189,7 @@ def trim_screen_text(screen: str) -> str:
     return text[-MAX_SCREEN_CHARACTERS:] if text else "The screen is empty."
 
 
-def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
+def build_app(settings: Settings, herdr: Herdr, history: ConversationHistory) -> ASGIApp:
     server = MCPServer(name="herdr", instructions=SERVER_INSTRUCTIONS)
 
     @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
@@ -231,13 +263,19 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             sent_while_busy = orchestrator.status == "working"
             frame = BUSY_VOICE_MESSAGE_FRAME if sent_while_busy else VOICE_MESSAGE_FRAME
             wait_ms = None if sent_while_busy else REPLY_WAIT_MS
+            exchange_id = secrets.token_hex(16)
+            framed_text = frame.format(text=text) + RECAP_REQUEST.format(exchange_id=exchange_id)
             try:
-                reported_status = herdr.prompt(agent, frame.format(text=text), wait_ms)
+                reported_status = herdr.prompt(agent, framed_text, wait_ms)
             except HerdrError as error:
                 _log_herdr_error(error)
                 if error.code == "agent_not_found":
                     return _error_result(f"No agent named {agent} is running.")
                 return _error_result(PROMPT_REFUSALS.get(error.code, MAYBE_SENT))
+            try:
+                history.record_exchange(exchange_id, agent, text)
+            except HistoryUnavailable as error:
+                _log_history_error("history write failed", error)
             try:
                 screen = trim_screen_text(herdr.read_screen(agent))
             except HerdrError as error:
@@ -253,6 +291,54 @@ def build_app(settings: Settings, herdr: Herdr) -> ASGIApp:
             )
         finally:
             _log_tool_call("send_message", outcome, started)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False,
+            destructive_hint=True,
+            idempotent_hint=True,
+            open_world_hint=False,
+        )
+    )
+    def save_reply_recap(
+        exchange_id: str,
+        recap: Annotated[str, Field(min_length=1, max_length=MAX_RECAP_CHARACTERS)],
+    ) -> Annotated[CallToolResult, SavedRecap]:
+        """For orchestrators only. Save a one-line recap of your answer to a voice message, with
+        the exchange_id the message gave. A second call replaces the recap."""
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            if not EXCHANGE_ID.fullmatch(exchange_id):
+                return _error_result("That is not an exchange id from a voice message.")
+            if CONTROL_CHARACTER.search(recap):
+                return _error_result("The recap contains a character I cannot store.")
+            try:
+                history.save_recap(exchange_id, recap)
+            except HistoryUnavailable as error:
+                _log_history_error("history write failed", error)
+                return _error_result("I could not save the recap.")
+            outcome = "ok"
+            return SavedRecap(exchange_id=exchange_id)
+        finally:
+            _log_tool_call("save_reply_recap", outcome, started)
+
+    @server.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
+    def get_recent_conversation() -> Annotated[CallToolResult, RecentConversation]:
+        """Read the user's recent messages to the orchestrators and their recaps, oldest first.
+        Call it once at the start of every conversation and do not read it aloud."""
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            try:
+                exchanges = history.recent_exchanges()
+            except HistoryUnavailable as error:
+                _log_history_error("history read failed", error)
+                return _error_result("I could not read the conversation history.")
+            outcome = "ok"
+            return RecentConversation(exchanges=exchanges)
+        finally:
+            _log_tool_call("get_recent_conversation", outcome, started)
 
     app: ASGIApp = server.streamable_http_app(
         json_response=True, transport_security=_transport_security(settings.public_host)
@@ -283,6 +369,10 @@ def _log_herdr_error(error: HerdrError) -> None:
             "herdr_cause": repr(error.__cause__) if error.__cause__ is not None else None,
         },
     )
+
+
+def _log_history_error(message: str, error: HistoryUnavailable) -> None:
+    logger.warning(message, extra={"history_error": repr(error.__cause__)})
 
 
 def _log_tool_call(tool: str, outcome: str, started: float) -> None:
@@ -355,5 +445,11 @@ def main() -> None:
     handler.setFormatter(FieldsFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
-    app = build_app(settings, Herdr(settings.herdr_binary, subprocess_runner))
+    try:
+        history = SqliteConversationHistory(settings.history_path, lambda: datetime.now(UTC))
+    except HistoryUnavailable as error:
+        raise SystemExit(
+            f"herdr-mcp: HERDR_MCP_HISTORY_PATH cannot be written: {error.__cause__!r}"
+        ) from None
+    app = build_app(settings, Herdr(settings.herdr_binary, subprocess_runner), history)
     uvicorn.run(app, host=settings.host, port=settings.port)
